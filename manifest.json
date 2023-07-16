@@ -33,11 +33,5 @@
       "js": ["src/scripts/flowDebugUI.js"],
       "run_at": "document_start"
     }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["src/lib/*"],
-      "matches": ["<all_urls>"]
-    }
   ]
 }

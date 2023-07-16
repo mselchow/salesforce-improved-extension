@@ -1,5 +1,5 @@
 // Adds global CSS to the header
-function addGlobalStyle(css) {
+export default function addGlobalStyle(css) {
   const head = document.getElementsByTagName("head")[0];
 
   if (!head) {

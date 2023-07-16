@@ -1,5 +1,5 @@
 // Waits for element to load before executing callback
-function waitForElement(selector) {
+export default function waitForElement(selector) {
   return new Promise((resolve) => {
     if (document.querySelector(selector)) {
       return resolve(document.querySelector(selector));

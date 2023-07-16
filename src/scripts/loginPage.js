@@ -1,3 +1,6 @@
+import addGlobalStyle from "../lib/addGlobalStyle";
+import waitForElement from "../lib/waitForElement";
+
 addGlobalStyle(`
   /* hide ads showing in iframe on right side */
     #right iframe {
