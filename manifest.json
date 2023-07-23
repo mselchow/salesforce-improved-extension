@@ -22,6 +22,11 @@
       "run_at": "document_idle"
     },
     {
+      "matches": ["*://*.force.com/visualEditor/appBuilder.app*"],
+      "js": ["src/scripts/lightningPage.js"],
+      "run_at": "document_idle"
+    },
+    {
       "matches": [
         "*://*.force.com/builder_platform_interaction/flowBuilder.app*"
       ],
