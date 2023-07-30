@@ -21,10 +21,10 @@ waitForElement("builder_platform_interaction-container-common").then(() => {
 function increaseSidebar() {
   const sidebar = document
     .querySelector("builder_platform_interaction-container-common")
-    ?.shadowRoot.querySelector(".editor")
-    ?.shadowRoot.querySelector("div.slds-grid")
+    ?.querySelector(".editor")
+    ?.querySelector("div.slds-grid")
     ?.querySelector("div.slds-col")
-    ?.firstChild.shadowRoot.querySelector(".left-panel");
+    ?.firstChild.querySelector(".left-panel");
 
   sidebar.classList.remove("slds-size_medium");
   sidebar.classList.add("slds-size_large");
