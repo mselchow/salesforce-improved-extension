@@ -46,4 +46,4 @@ The following UI/UX adjustment are included / in progress:
 
 ## Credits
 
-(Emoji icons created by Freepik - Flaticon)[https://www.flaticon.com/free-icons/emoji]
+[Emoji icons created by Freepik - Flaticon](https://www.flaticon.com/free-icons/emoji)
