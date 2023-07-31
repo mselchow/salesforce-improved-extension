@@ -42,7 +42,7 @@ The following UI/UX adjustment are included / in progress:
 4.  Open `chrome://extensions/`
 5.  Enable Developer Mode
 6.  Click `Load Unpacked`
-7.  Select the `dist` folder (if you ran `build`) or the `src` folder (if your an `dev`)
+7.  Select the `dist` folder (if you ran `build`) or the `src` folder (if you ran `dev`)
 
 ## Credits
 
