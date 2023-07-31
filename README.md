@@ -38,11 +38,11 @@ The following UI/UX adjustment are included / in progress:
 
 1.  Clone the repository
 2.  Run `npm install` in the directory
-3.  Create distributable files using `npm run build`
+3.  Create distributable files using `npm run build` or `npm run dev`
 4.  Open `chrome://extensions/`
 5.  Enable Developer Mode
 6.  Click `Load Unpacked`
-7.  Select the `dist` folder
+7.  Select the `dist` folder (if you ran `build`) or the `src` folder (if your an `dev`)
 
 ## Credits
 
