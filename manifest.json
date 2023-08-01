@@ -22,30 +22,36 @@
   ],
   "content_scripts": [
     {
+      "js": ["src/scripts/loginPage.js"],
       "matches": [
         "*://*.my.salesforce.com/*",
         "*://login.salesforce.com/*",
         "*://test.salesforce.com/*"
       ],
-      "js": ["src/scripts/loginPage.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.force.com/visualEditor/appBuilder.app*"],
       "js": ["src/scripts/lightningPage.js"],
+      "matches": ["*://*.force.com/visualEditor/appBuilder.app*"],
       "run_at": "document_idle"
     },
     {
+      "js": ["src/scripts/flowMainUI.js"],
       "matches": [
         "*://*.force.com/builder_platform_interaction/flowBuilder.app*"
       ],
-      "js": ["src/scripts/flowMainUI.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.vf.force.com/flow/*"],
       "js": ["src/scripts/flowDebugUI.js"],
+      "matches": ["*://*.vf.force.com/flow/*"],
       "run_at": "document_start"
+    },
+    {
+      "js": ["src/scripts/installedPackages.js"],
+      "matches": ["*://*.salesforce.com/0A3?setupid=ImportedPackage*"],
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ]
 }
