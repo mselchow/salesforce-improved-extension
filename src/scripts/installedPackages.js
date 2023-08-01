@@ -14,6 +14,7 @@ addGlobalStyle(`
 
 const table = document.querySelector("table.list");
 
+replaceRowDividers();
 addSortableClass(table);
 replaceTableHeaderWithTableData();
 makeSortable();
@@ -38,6 +39,17 @@ function replaceTableHeaderWithTableData() {
       });
 
       parent.replaceChild(newElement, thElement);
+    }
+  });
+}
+
+// replaces row dividers were hidden by the CSS change
+function replaceRowDividers() {
+  const rows = document.querySelectorAll("table.list tbody tr.dataRow");
+  rows.forEach((row) => {
+    if (row.classList && row.classList.contains("last")) {
+      row.classList.remove("last");
+      row.classList.add("first");
     }
   });
 }
