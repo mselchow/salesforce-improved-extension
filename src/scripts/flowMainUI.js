@@ -23,7 +23,7 @@ addGlobalStyle(`
   }
 `);
 
-waitForElement("builder_platform_interaction-container-common").then(() => {
+waitForElement("builder_platform_interaction-left-panel").then(() => {
   increaseSidebar();
 });
 
@@ -33,10 +33,11 @@ function increaseSidebar() {
     ?.querySelector(".editor")
     ?.querySelector("div.slds-grid")
     ?.querySelector("div.slds-col")
-    ?.firstChild?.querySelector(".left-panel");
+    ?.querySelector("builder_platform_interaction-left-panel")
+    ?.querySelector(".left-panel");
 
-  if (sidebar) {
-    sidebar.classList?.remove("slds-size_medium");
-    sidebar.classList?.add("slds-size_large");
+  if (sidebar && sidebar.classList) {
+    sidebar.classList.remove("slds-size_medium");
+    sidebar.classList.add("slds-size_large");
   }
 }
