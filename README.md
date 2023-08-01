@@ -27,7 +27,7 @@ The following UI/UX adjustment are included / in progress:
   - [ ] Increase minimum height of multi-line text boxes in edit windows
   - [ ] Change default font of multi-line formula field text boxes to monospace font
 - [ ] **Setup**
-  - [ ] Allow managed packages to be sorted by column / default to alphabetically
+  - [x] Allow managed packages to be sorted by column / default to alphabetically
   - [ ] Allow org-wide sharing table to be sorted / default to alphabetically
 - [ ] **Reports**
   - [ ] Improve field drag/drop functionality (if possible)
