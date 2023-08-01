@@ -7,10 +7,19 @@ addGlobalStyle(`
     max-width: 70vw !important;
   }
 
-  /* allow record selection combo box to overflow container */
+  /* increase height of debug modal to improve visibility */
   .slds-modal__content {
-    overflow: visible !important;
-    overflow-y: visible !important;
+    max-height: 75vh !important;
+  }
+
+  /* increase width of debug modal to improve visibility */
+  .uiModal--small .modal-container {
+    max-width: 50vw !important;
+  }
+
+  /* allow record selection combo box to overflow container */
+  div .slds-modal__content > div .lookup__menu.uiInput {
+    position: fixed !important;
   }
 `);
 
@@ -24,8 +33,10 @@ function increaseSidebar() {
     ?.querySelector(".editor")
     ?.querySelector("div.slds-grid")
     ?.querySelector("div.slds-col")
-    ?.firstChild.querySelector(".left-panel");
+    ?.firstChild?.querySelector(".left-panel");
 
-  sidebar.classList.remove("slds-size_medium");
-  sidebar.classList.add("slds-size_large");
+  if (sidebar) {
+    sidebar.classList?.remove("slds-size_medium");
+    sidebar.classList?.add("slds-size_large");
+  }
 }
