@@ -8,6 +8,8 @@ The following UI/UX adjustment are included / in progress:
 
 - [ ] **Extension Options**
   - [ ] Allow user ability to toggle individual UI adjustments
+- [ ] **Cross-Browser**
+  - [ ] Firefox version of extension
 - [x] **Login Page**
   - [x] Hide Salesforce ads on right half of page
   - [x] Adjust page padding/margin for maximize use of space
@@ -20,12 +22,12 @@ The following UI/UX adjustment are included / in progress:
   - [x] Hide walkthrough tips pop-ups
   - [x] Hide AppExchange link
   - [x] Hide focus-stealing pop-ups (tips, page optimizer, etc.)
-- [ ] **Flow**
+- [x] **Flow**
   - [x] Increase modal widths to improve visibility of dropdown elements
   - [x] Allow record selection dropdown for debugging to overflow container
   - [x] Increase width of left sidebar to improve variable name visibility
-  - [ ] Increase minimum height of multi-line text boxes in edit windows
-  - [ ] Change default font of multi-line formula field text boxes to monospace font
+  - [x] Increase minimum height of multi-line text boxes in edit windows
+  - [x] Change default font of multi-line formula field text boxes to monospace font
 - [ ] **Setup**
   - [x] Allow managed packages to be sorted by column / default to alphabetically
   - [ ] Allow org-wide sharing table to be sorted / default to alphabetically
