@@ -21,6 +21,13 @@ addGlobalStyle(`
   div .slds-modal__content > div .lookup__menu.uiInput {
     position: fixed !important;
   }
+
+  /* increase default size of text area for formulas */
+  textarea[name="Formula"] {
+    min-height: 120px !important;
+    font-family: monospace !important;
+    line-height: 1.25rem !important;
+  }
 `);
 
 waitForElement("builder_platform_interaction-left-panel").then(() => {
