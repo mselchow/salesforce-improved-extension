@@ -12,6 +12,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.0.0-beta.18",
     "@types/chrome": "^0.0.241",
+    "@types/node": "^20.4.8",
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
@@ -29,8 +30,11 @@
     "vite": "^4.4.4"
   },
   "dependencies": {
-    "@emotion/react": "^11.11.1",
-    "@mantine/core": "^6.0.17",
-    "@mantine/hooks": "^6.0.17"
+    "@radix-ui/react-slot": "^1.0.2",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "lucide-react": "^0.265.0",
+    "tailwind-merge": "^1.14.0",
+    "tailwindcss-animate": "^1.0.6"
   }
 }
