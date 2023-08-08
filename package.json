@@ -20,6 +20,8 @@
     "@vitejs/plugin-react": "^4.0.3",
     "autoprefixer": "^10.4.14",
     "eslint": "^8.45.0",
+    "eslint-import-resolver-typescript": "^3.5.5",
+    "eslint-plugin-import": "^2.28.0",
     "postcss": "^8.4.26",
     "prettier": "^3.0.0",
     "react": "^18.2.0",
@@ -30,11 +32,16 @@
     "vite": "^4.4.4"
   },
   "dependencies": {
+    "@hookform/resolvers": "^3.2.0",
+    "@radix-ui/react-label": "^2.0.2",
     "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-switch": "^1.0.3",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "lucide-react": "^0.265.0",
+    "react-hook-form": "^7.45.4",
     "tailwind-merge": "^1.14.0",
-    "tailwindcss-animate": "^1.0.6"
+    "tailwindcss-animate": "^1.0.6",
+    "zod": "^3.21.4"
   }
 }
