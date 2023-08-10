@@ -111,6 +111,18 @@ function sortSavedUsernames() {
 
     const sortedLogins = Array.from(logins);
 
+    // no saved logins
+    if (sortedLogins.length <= 1) {
+      const parentContainer = document.querySelector("div#right #content");
+      parentContainer.innerHTML = `
+      <div>
+        <h2 style="text-align: center">Salesforce Improved</h2>
+        <p style="text-align: center; margin-bottom: 0.83em">No saved logins to display.</p>
+      </div>
+      `;
+      return;
+    }
+
     const loginName = (login) => {
       return login.firstElementChild?.lastChild?.textContent ?? "";
     };
