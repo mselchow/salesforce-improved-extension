@@ -5,6 +5,7 @@ import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
+import { useToast } from "@/components/ui/use-toast";
 import OptionsFormItem from "@/options/OptionsFormItem";
 
 const formSchema = z.object({
@@ -31,17 +32,23 @@ const formSchema = z.object({
 });
 
 export default function OptionsForm() {
+  const { toast } = useToast();
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
   });
 
   function onSubmit(data: z.infer<typeof formSchema>) {
-    console.log(data);
+    console.log(JSON.stringify(data));
+    toast({
+      title: "Options saved!",
+      description: "Your options have been saved.",
+    });
   }
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-4">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <div>
           <h3 className="text-lg font-medium mb-2">Login Page</h3>
           <div className="rounded-lg border p-3 space-y-2">
