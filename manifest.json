@@ -20,9 +20,7 @@
     "*://test.salesforce.com/*",
     "*://*.force.com/*"
   ],
-  "options_ui": {
-    "page": "src/options/index.html"
-  },
+  "options_page": "src/options/index.html",
   "content_scripts": [
     {
       "js": ["src/scripts/loginPage.js"],
