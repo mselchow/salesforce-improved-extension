@@ -1,4 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
 
@@ -6,49 +7,90 @@ import { Button } from "@/components/ui/button";
 import { Form, FormField } from "@/components/ui/form";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/components/ui/use-toast";
+import getExtensionStorage from "@/lib/getExtensionStorage";
 import OptionsFormItem from "@/options/OptionsFormItem";
 
+export type ExtensionOptions = typeof formSchema._output;
+
 const formSchema = z.object({
+  general: z.object({
+    isPopupsMinimized: z.boolean().default(true),
+  }),
   loginPage: z.object({
-    isRecentLoginsOnRight: z.boolean(),
-    isRecentLoginsAlphabetized: z.boolean(),
-    isRecentLoginsCleanedUp: z.boolean(),
+    isRecentLoginsOnRight: z.boolean().default(true),
+    isRecentLoginsAlphabetized: z.boolean().default(true),
+    isRecentLoginsCleanedUp: z.boolean().default(true),
   }),
   lightningPages: z.object({
-    isWalkthroughTipsHidden: z.boolean(),
-    isAppExchangeLinkHidden: z.boolean(),
-    isPopupsHidden: z.boolean(),
+    isWalkthroughTipsHidden: z.boolean().default(true),
+    isAppExchangeLinkHidden: z.boolean().default(true),
+    isPopupsHidden: z.boolean().default(true),
   }),
   flow: z.object({
-    isModalWidthIncreased: z.boolean(),
-    isDebugDropdownOverflow: z.boolean(),
-    isSidebarWidthIncreased: z.boolean(),
-    isFormulaHeightIncreased: z.boolean(),
-    isFormulaFontMonospace: z.boolean(),
+    isModalWidthIncreased: z.boolean().default(true),
+    isDebugDropdownOverflow: z.boolean().default(true),
+    isSidebarWidthIncreased: z.boolean().default(true),
+    isFormulaHeightIncreased: z.boolean().default(true),
+    isFormulaFontMonospace: z.boolean().default(true),
   }),
   setup: z.object({
-    isManagedPackagesSorted: z.boolean(),
+    isManagedPackagesSorted: z.boolean().default(true),
   }),
 });
 
 export default function OptionsForm() {
   const { toast } = useToast();
+  const extOptions = getExtensionStorage();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
+    defaultValues: extOptions,
   });
+
+  useEffect(() => {
+    form.reset(extOptions);
+  }, []);
 
   function onSubmit(data: z.infer<typeof formSchema>) {
     console.log(JSON.stringify(data));
-    toast({
-      title: "Options saved!",
-      description: "Your options have been saved.",
+    chrome.storage.sync.set(data, () => {
+      if (chrome.runtime.lastError) {
+        toast({
+          title: "Error!",
+          description: "There was an error saving your options.",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Options saved!",
+          description: "Your options have been saved.",
+        });
+      }
     });
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div>
+          <h3 className="text-lg font-medium mb-2">General</h3>
+          <div className="rounded-lg border p-3 space-y-2">
+            <FormField
+              control={form.control}
+              name="general.isPopupsMinimized"
+              render={({ field }) => (
+                <OptionsFormItem label="Default Lightning pop-ups to be minimized">
+                  <Switch
+                    className="my-0"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </OptionsFormItem>
+              )}
+            />
+          </div>
+        </div>
+
         <div>
           <h3 className="text-lg font-medium mb-2">Login Page</h3>
           <div className="rounded-lg border p-3 space-y-2">
