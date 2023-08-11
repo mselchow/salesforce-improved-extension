@@ -32,6 +32,11 @@
       "run_at": "document_idle"
     },
     {
+      "js": ["src/scripts/general.js"],
+      "matches": ["*://*.force.com/lightning*"],
+      "run_at": "document_idle"
+    },
+    {
       "js": ["src/scripts/lightningPage.js"],
       "matches": ["*://*.force.com/visualEditor/appBuilder.app*"],
       "run_at": "document_idle"
