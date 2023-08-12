@@ -10,6 +10,8 @@ The following UI/UX adjustment are included / in progress:
   - [ ] Allow user ability to toggle individual UI adjustments
 - [ ] **Cross-Browser**
   - [ ] Firefox version of extension
+- [x] **General**
+  - [x] Default any Salesforce pop-ups to be minimized
 - [x] **Login Page**
   - [x] Hide Salesforce ads on right half of page
   - [x] Adjust page padding/margin for maximize use of space
