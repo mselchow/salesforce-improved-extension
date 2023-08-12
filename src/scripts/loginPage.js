@@ -15,6 +15,7 @@ addGlobalStyle(`
   /* decrease extra padding on top of page */
   #wrapper {
     padding-top: 40px !important;
+    max-width: 450px !important;
   }
 
   /* decrease header margin */
@@ -57,7 +58,7 @@ addGlobalStyle(`
   #idlist span {
     position: inherit;
     padding-left: 5px;
-    font-size: 12px;
+    font-size: 13px;
   }
 
   /* reduce padding of logins */
