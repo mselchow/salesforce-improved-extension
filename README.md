@@ -12,6 +12,7 @@ The following UI/UX adjustment are included / in progress:
   - [ ] Firefox version of extension
 - [x] **General**
   - [x] Default any Salesforce pop-ups to be minimized
+  - [x] Adds quick links to Setup from any front-end Salesforce page
 - [x] **Login Page**
   - [x] Hide Salesforce ads on right half of page
   - [x] Adjust page padding/margin for maximize use of space
