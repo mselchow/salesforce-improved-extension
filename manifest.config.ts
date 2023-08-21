@@ -1,4 +1,5 @@
 import { defineManifest } from "@crxjs/vite-plugin";
+
 import packageJson from "./package.json";
 const { version } = packageJson;
 
