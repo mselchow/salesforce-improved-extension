@@ -50,13 +50,13 @@ addGlobalStyle(`
   }
 
   /* hide clock icon and avatar in the display list */
-  #idlist img {
+  :is(#idlist, #editlist) img.thumbnail, :is(#idlist, #editlist) img.activity {
     display: none !important;
   }
 
   /* correct spacing and increase font size */
-  #idlist span {
-    position: inherit;
+  :is(#idlist, #editlist) span {
+    position: static;
     padding-left: 5px;
     font-size: 13px;
   }
@@ -69,6 +69,7 @@ addGlobalStyle(`
 
 waitForElement("#main").then(() => {
   moveLoginsToRight();
+  moveSavedLoginsEditorToRight();
 });
 
 waitForElement("#idlist").then(() => {
@@ -100,6 +101,19 @@ function moveLoginsToRight() {
 
   if (rightDiv && wrap) {
     rightDiv.appendChild(wrap);
+  }
+}
+
+// Moves the div for editing saved logins to the right side of the page
+function moveSavedLoginsEditorToRight() {
+  const savedLoginEditor = document.getElementById("manager");
+  const rightContainer = document.querySelector("#right #content");
+
+  if (savedLoginEditor && rightContainer) {
+    const savedLoginEditorClone = savedLoginEditor.cloneNode(true);
+
+    rightContainer.appendChild(savedLoginEditorClone);
+    savedLoginEditor.remove();
   }
 }
 
