@@ -61,8 +61,8 @@ addGlobalStyle(`
     font-size: 13px;
   }
 
-  /* reduce padding of logins */
-  #idlist a {
+  /* reduce padding of saved login entries */
+  #idlist a, #manager li {
     padding: 8px !important;
   }
 `);
