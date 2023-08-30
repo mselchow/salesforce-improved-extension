@@ -15,7 +15,6 @@ addGlobalStyle(`
   /* decrease extra padding on top of page */
   #wrapper {
     padding-top: 40px !important;
-    max-width: 450px !important;
   }
 
   /* decrease header margin */
