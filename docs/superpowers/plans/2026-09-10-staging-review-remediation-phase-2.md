@@ -43,17 +43,14 @@ Expected: exit 0 before any Phase 2 edit.
 
 - [ ] **Step 2: Search every UI component for retained consumers**
 
-Run:
 ```bash
 rg -n "@/components/ui|components/ui" src
 rg -n "Button|Form|Input|Label|Switch|Toast|Toaster|useToast|use-toast" src
 ```
-
 Record exact retained imports. Do not infer usage from filenames alone.
 
 - [ ] **Step 3: Search dependency symbols before removal**
 
-Run:
 ```bash
 rg -n "@hookform/resolvers|@radix-ui|react-hook-form|zod|lucide-react|class-variance-authority|tailwind-merge|tailwindcss-animate|clsx" src tailwind.config.js
 ```
@@ -80,9 +77,7 @@ If `Button` is only used by `src/App.tsx`, replace it in Task 2 and remove its d
 
 - [ ] **Step 1: Replace the shared Button with a native styled button if it has no other consumer**
 
-Use the same user-visible behavior and preserve the `chrome.runtime.openOptionsPage()` fallback logic.
-
-Representative JSX:
+Preserve `chrome.runtime.openOptionsPage()` fallback behavior. Use:
 ```tsx
 <button
   type="button"
@@ -101,7 +96,7 @@ Representative JSX:
 
 - [ ] **Step 2: Delete UI files proven unused by Task 1 searches**
 
-Expected candidates include:
+Expected candidates:
 ```text
 src/components/ui/button.tsx
 src/components/ui/form.tsx
@@ -112,23 +107,19 @@ src/components/ui/toast.tsx
 src/components/ui/toaster.tsx
 src/components/ui/use-toast.ts
 ```
-Delete only those with zero retained consumers.
+Delete only files with zero retained consumers.
 
 - [ ] **Step 3: Remove packages whose only consumers were deleted**
 
-Use `npm uninstall` for each confirmed-unused package, expected candidates:
+Run `npm uninstall` only for packages confirmed unused by the searches. Expected candidates are:
 ```bash
 npm uninstall @hookform/resolvers @radix-ui/react-label @radix-ui/react-slot @radix-ui/react-switch @radix-ui/react-toast class-variance-authority clsx lucide-react react-hook-form tailwind-merge tailwindcss-animate zod
 ```
-Adjust the list to actual code-search evidence.
+Remove names from this command if fresh code search finds a retained consumer.
 
-- [ ] **Step 4: Remove Tailwind animation plugin if its package is removed**
+- [ ] **Step 4: Remove Tailwind animation plugin/config if its package is removed**
 
-Delete:
-```js
-plugins: [require("tailwindcss-animate")],
-```
-and any animation/keyframe extension entries that exist solely for deleted components and have no retained class usage.
+Delete `plugins: [require("tailwindcss-animate")]` plus animation/keyframe config that has no retained class usage.
 
 - [ ] **Step 5: Remove shadcn config/helper files when no longer useful**
 
@@ -147,7 +138,7 @@ Expected: PASS.
 npm ls --depth=0
 git diff -- package.json package-lock.json
 ```
-Confirm removed packages are not silently reintroduced transitively as direct dependencies.
+Confirm removed packages are not still direct dependencies.
 
 - [ ] **Step 8: Commit**
 
@@ -155,11 +146,11 @@ Confirm removed packages are not silently reintroduced transitively as direct de
 git add src package.json package-lock.json tailwind.config.js components.json
 git commit -m "refactor: remove unused UI dependencies"
 ```
-Omit deleted/unchanged paths as appropriate.
+Omit unchanged paths.
 
 ---
 
-### Task 3: Upgrade the CRXJS/Vite compatibility pair
+### Task 3: Upgrade the CRXJS/Vite compatibility group
 
 **Files:**
 - Modify: `package.json`
@@ -169,47 +160,42 @@ Omit deleted/unchanged paths as appropriate.
 **Interfaces:**
 - Must preserve Phase 1 manifest verifier expectations.
 
-- [ ] **Step 1: Inspect current stable compatibility before editing**
+- [ ] **Step 1: Inspect current stable compatibility**
 
-Run:
 ```bash
 npm view @crxjs/vite-plugin version peerDependencies
 npm view vite version engines
 npm view @vitejs/plugin-react version peerDependencies engines
 node --version
 ```
+Use those results to choose one mutually compatible stable CRXJS/Vite/plugin-react set supported by the execution environment.
 
-Select a stable CRXJS/Vite/plugin-react combination with mutually compatible peer ranges and Node support. Record the selected versions in the commit message/body or execution notes.
+- [ ] **Step 2: Install the chosen compatibility group explicitly**
 
-- [ ] **Step 2: Upgrade only this compatibility group**
+After selecting the versions in Step 1, run `npm install --save-dev` with all three exact `package@version` selections in one command. Do not install one package first and let npm opportunistically reshape the peer graph before the other two are selected.
 
-Example shape, replacing `<version>` with the verified versions:
-```bash
-npm install --save-dev @crxjs/vite-plugin@<version> vite@<version> @vitejs/plugin-react@<version>
-```
-
-- [ ] **Step 3: Run targeted build verification first**
+- [ ] **Step 3: Run targeted build verification**
 
 ```bash
 npm run build
 npm run verify:manifest
 ```
-If this fails, investigate the exact breaking change before modifying application behavior.
+If either fails, investigate the exact documented breaking change before modifying application behavior.
 
-- [ ] **Step 4: Run the entire Phase 1 gate**
+- [ ] **Step 4: Run full Phase 1 gate**
 
 ```bash
 npm run check
 ```
 Expected: PASS.
 
-- [ ] **Step 5: Inspect built manifest/content script output**
+- [ ] **Step 5: Inspect output**
 
 ```bash
 cat dist/manifest.json
 find dist -maxdepth 2 -type f | sort
 ```
-Confirm the extension still contains the popup/options artifacts and expected content scripts.
+Confirm popup/options artifacts and expected content scripts remain.
 
 - [ ] **Step 6: Commit**
 
@@ -229,9 +215,9 @@ Omit unchanged source files.
 - Potentially modify: `tsconfig.json`, `tsconfig.node.json` only for required compatibility changes
 
 **Interfaces:**
-- Existing project source/type semantics must remain intact.
+- Existing source/type semantics must remain intact.
 
-- [ ] **Step 1: Inspect stable versions and peer constraints**
+- [ ] **Step 1: Inspect stable versions and parser compatibility**
 
 ```bash
 npm view typescript version
@@ -241,20 +227,18 @@ npm view @types/react-dom version
 npm view @types/chrome version
 npm view @typescript-eslint/parser peerDependencies
 ```
-Choose TypeScript no newer than the installed/next ESLint parser compatibility range unless Task 5 is intentionally executed in the same temporary working state before verification.
+Choose a TypeScript version supported by the currently installed parser or defer the TypeScript bump until Task 5's parser selection is known. Do not create an intentionally broken intermediate commit.
 
-- [ ] **Step 2: Upgrade the selected TypeScript/type set**
+- [ ] **Step 2: Install the chosen exact versions together**
 
-```bash
-npm install --save-dev typescript@<version> @types/node@<version> @types/react@<version> @types/react-dom@<version> @types/chrome@<version>
-```
+Run one `npm install --save-dev` command containing the exact selected versions of TypeScript and the type packages from Step 1.
 
-- [ ] **Step 3: Run typecheck first**
+- [ ] **Step 3: Run typecheck**
 
 ```bash
 npm run typecheck
 ```
-Resolve only genuine new compiler/config incompatibilities; do not weaken strictness to make the upgrade pass.
+Resolve genuine compatibility issues without weakening strictness.
 
 - [ ] **Step 4: Run full gate**
 
@@ -277,13 +261,13 @@ git commit -m "chore: upgrade TypeScript toolchain"
 **Files:**
 - Modify: `package.json`
 - Modify: `package-lock.json`
-- Modify/replace: `.eslintrc.json` only if required by the chosen supported ESLint major
-- Potentially create: `eslint.config.js` if migrating to flat config is required/beneficial for the selected stable ESLint version
+- Modify/replace: `.eslintrc.json` only if required by the selected stable ESLint major
+- Potentially create: `eslint.config.js` if the selected ESLint major requires flat config
 
 **Interfaces:**
 - `npm run lint` must continue to cover `.js`, `.ts`, and `.tsx`.
 
-- [ ] **Step 1: Inspect current stable versions and compatibility**
+- [ ] **Step 1: Inspect stable versions and peer constraints**
 
 ```bash
 npm view eslint version engines
@@ -295,20 +279,18 @@ npm view eslint-import-resolver-typescript version peerDependencies
 
 - [ ] **Step 2: Select one coherent lint stack**
 
-Prefer a supported stable combination rather than mixing newest majors with incompatible peer ranges. If the chosen ESLint major requires flat config, migrate config explicitly rather than relying on deprecated compatibility behavior.
+Choose exact versions with compatible peer ranges. If that ESLint major requires flat config, migrate explicitly rather than depending on deprecated compatibility behavior.
 
-- [ ] **Step 3: Upgrade the lint stack**
+- [ ] **Step 3: Install all selected lint packages together**
 
-```bash
-npm install --save-dev eslint@<version> @typescript-eslint/parser@<version> @typescript-eslint/eslint-plugin@<version> eslint-plugin-import@<version> eslint-import-resolver-typescript@<version>
-```
+Run one `npm install --save-dev` command containing the exact selected versions of ESLint, parser/plugin, import plugin, and resolver.
 
-- [ ] **Step 4: Run lint and fix configuration/API incompatibilities**
+- [ ] **Step 4: Run lint and fix only real incompatibilities**
 
 ```bash
 npm run lint
 ```
-Do not globally disable existing import-order/unresolved protections just to complete the upgrade.
+Do not globally disable the existing import-order or unresolved-import protections to make the upgrade pass.
 
 - [ ] **Step 5: Run full gate**
 
@@ -323,7 +305,7 @@ Expected: PASS.
 git add package.json package-lock.json .eslintrc.json eslint.config.js
 git commit -m "chore: upgrade lint toolchain"
 ```
-Omit whichever config file does not exist after the selected approach.
+Omit whichever config path does not exist.
 
 ---
 
@@ -332,7 +314,7 @@ Omit whichever config file does not exist after the selected approach.
 **Files:**
 - Modify: `package.json`
 - Modify: `package-lock.json`
-- Potentially modify: `tailwind.config.js`, `postcss.config.cjs`, `src/styles/globals.css`, React entry files only when required by documented breaking changes
+- Potentially modify: `tailwind.config.js`, `postcss.config.cjs`, `src/styles/globals.css`, React entry files only for required documented breaking changes
 
 **Interfaces:**
 - Popup and Options must still render/build; Phase 1 browser behavior must remain unaffected.
@@ -343,9 +325,8 @@ Omit whichever config file does not exist after the selected approach.
 npm ls --depth=0
 ```
 
-- [ ] **Step 2: Inspect stable versions/peer constraints for remaining packages**
+- [ ] **Step 2: Inspect stable versions/peer constraints**
 
-At minimum inspect React, ReactDOM, Tailwind, PostCSS, Autoprefixer, and `tslib` if still direct:
 ```bash
 npm view react version
 npm view react-dom version peerDependencies
@@ -355,20 +336,20 @@ npm view autoprefixer version peerDependencies
 npm view tslib version
 ```
 
-- [ ] **Step 3: Upgrade one compatible support group**
+- [ ] **Step 3: Upgrade one compatible subgroup at a time**
 
-Use explicit versions. If Tailwind's newest major requires a significant CSS/build migration, treat that as its own commit after React/support packages rather than combining unrelated migrations.
+Install exact versions selected from Step 2. Keep React/ReactDOM together. If the newest Tailwind major requires a significant CSS/build migration, make Tailwind/PostCSS its own subgroup and commit rather than combining it with React.
 
-- [ ] **Step 4: Run full gate after each meaningful subgroup**
+- [ ] **Step 4: Run the full gate after each subgroup**
 
 ```bash
 npm run check
 ```
-Expected: PASS before proceeding to another subgroup.
+Expected: PASS before proceeding.
 
 - [ ] **Step 5: Commit each subgroup separately**
 
-Examples:
+Use descriptive commits such as:
 ```bash
 git commit -m "chore: upgrade React dependencies"
 git commit -m "chore: upgrade Tailwind build stack"
@@ -379,10 +360,10 @@ git commit -m "chore: upgrade Tailwind build stack"
 ### Task 7: Audit the modernized dependency graph
 
 **Files:**
-- Create: `docs/dependency-audit.md` if remaining advisories require explanation; otherwise update an existing project note only if one already exists.
+- Create: `docs/dependency-audit.md` only if remaining advisories require explanation
 
 **Interfaces:**
-- Produces a factual record of remaining advisories and their exposure classification.
+- Produces a factual record of remaining advisories and exposure classification.
 
 - [ ] **Step 1: Run fresh audit commands**
 
@@ -390,37 +371,23 @@ git commit -m "chore: upgrade Tailwind build stack"
 npm audit
 npm audit --omit=dev
 ```
-Record exact counts/severities from both commands.
+Capture the exact outputs in execution notes.
 
-- [ ] **Step 2: Inspect each remaining direct advisory path**
+- [ ] **Step 2: Inspect each remaining high/critical advisory path**
 
-For every remaining high/critical advisory, run:
+For each affected package:
 ```bash
-npm explain <affected-package>
+npm explain PACKAGE_NAME
 ```
-and determine whether it is runtime-shipped, build/dev-only, or unreachable after bundling.
+Replace `PACKAGE_NAME` with the exact affected package from `npm audit`. Classify each remaining path as runtime-shipped, build/dev-only, or not included in the bundled extension output.
 
 - [ ] **Step 3: Apply safe supported upgrades only**
 
-If a remaining advisory has a compatible non-breaking update, install it and rerun `npm run check` plus `npm audit`. Do not use `npm audit fix --force`.
+If an advisory has a compatible update, install it and rerun `npm run check` plus both audit commands. Do not use `npm audit fix --force`.
 
-- [ ] **Step 4: Document remaining advisories when nonzero**
+- [ ] **Step 4: Document remaining advisories only when nonzero**
 
-Create `docs/dependency-audit.md` with:
-```markdown
-# Dependency Audit
-
-**Date:** 2026-09-10
-
-## Summary
-- `npm audit`: <exact result>
-- `npm audit --omit=dev`: <exact result>
-
-## Remaining advisories
-| Package/path | Severity | Runtime shipped? | Reason retained | Mitigation/status |
-| --- | --- | --- | --- | --- |
-```
-Do not create the file if audit is zero and there is nothing substantive to document.
+Create `docs/dependency-audit.md` from the actual command output. Include the date, exact `npm audit` and `npm audit --omit=dev` summaries, and one row per remaining advisory with package/path, severity, runtime-shipped classification, reason retained, and mitigation/status. Do not create a template or placeholder-only document. If both audit commands report zero vulnerabilities, do not create this file.
 
 - [ ] **Step 5: Run full gate again**
 
@@ -429,13 +396,13 @@ npm run check
 ```
 Expected: PASS.
 
-- [ ] **Step 6: Commit audit outcome**
+- [ ] **Step 6: Commit audit outcome if files changed**
 
 ```bash
 git add package.json package-lock.json docs/dependency-audit.md
 git commit -m "chore: document dependency audit status"
 ```
-If no files changed, do not create an empty commit.
+Do not create an empty commit.
 
 ---
 
@@ -447,7 +414,7 @@ If no files changed, do not create an empty commit.
 **Interfaces:**
 - Produces final modernization verification evidence.
 
-- [ ] **Step 1: Run full fresh verification**
+- [ ] **Step 1: Run fresh verification**
 
 ```bash
 npm ci
@@ -457,7 +424,7 @@ npm audit --omit=dev
 ```
 Record exact results.
 
-- [ ] **Step 2: Verify clean diff and repository state**
+- [ ] **Step 2: Verify repository state**
 
 ```bash
 git diff --check staging...HEAD
@@ -466,13 +433,9 @@ npm ls --depth=0
 ```
 Expected: no whitespace errors, clean working tree, coherent dependency tree.
 
-- [ ] **Step 3: Re-read Phase 2 acceptance criteria in the approved spec**
+- [ ] **Step 3: Re-read Phase 2 acceptance criteria**
 
-Confirm:
-- unused UI/dependency surface is removed;
-- remaining dependencies are on a supported stable compatibility set;
-- full Phase 1 gate passes after modernization;
-- final audit is recorded/classified without force-fixing unsupported majors.
+Confirm unused UI/dependency surface is removed, remaining dependencies form a supported stable compatibility set, the full Phase 1 gate remains green, and final audit results are recorded/classified without unsupported force upgrades.
 
 - [ ] **Step 4: Keep browser verification claims scoped**
 
