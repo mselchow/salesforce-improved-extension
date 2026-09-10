@@ -4,7 +4,7 @@
 
 **Goal:** Fix the confirmed browser/content-script defects from the staging review, add modern Salesforce Setup routing, and establish deterministic automated project gates without changing unrelated product behavior.
 
-**Architecture:** Remove the install/update programmatic injector and rely exclusively on static content scripts. Introduce one bounded DOM-wait helper and one recurring DOM-observer helper, then make each affected content script consume the appropriate lifecycle primitive with idempotent operations. Add Vitest/jsdom regression coverage, generated-manifest verification, and CI before any dependency/toolchain modernization.
+**Architecture:** Remove the install/update programmatic injector and rely exclusively on static content scripts. Introduce one bounded DOM-wait helper and one recurring DOM-observer helper. Put testable feature behavior in side-effect-free modules under `src/features/`; keep `src/scripts/*` as thin content-script entrypoints that inject styles and start those features. Add Vitest/jsdom regression coverage, generated-manifest verification, and CI before any dependency/toolchain modernization.
 
 **Tech Stack:** Chrome Manifest V3, CRXJS/Vite, JavaScript content scripts, React/TypeScript popup/options UI, Vitest 0.34.6, jsdom 22.1.0, ESLint, Prettier, GitHub Actions.
 
@@ -13,13 +13,14 @@
 ## Global Constraints
 
 - GitHub `staging` at `ec8a76aa3c5d2e7414f1b6ae8afbe8b8bb9c544d` is the authoritative product source; do not reconstruct Codex-only uncommitted edits.
+- Execute this plan in an isolated worktree on branch `fix/staging-review-runtime-reliability`, created from the latest `fix/staging-review-remediation` commit.
 - Do not preserve seamless programmatic reinjection into already-open Salesforce tabs; users may refresh tabs after install/update.
 - Content scripts must fail open when expected Salesforce DOM is absent.
 - Intentional repeated SPA behavior must be idempotent.
+- Feature modules imported by tests must not auto-start observers, timers, or page modifications. Side effects belong only in thin `src/scripts/*` entrypoints.
 - Do not add Playwright/Puppeteer in Phase 1.
-- Do not begin dependency/toolchain modernization until this plan's full `npm run check` gate passes.
+- Do not begin dependency/toolchain modernization until this plan's full `npm run check` gate passes and the Phase 1 result is reviewed as the behavioral baseline.
 - Do not claim authenticated Salesforce smoke testing was completed unless it was actually performed.
-- Keep Phase 1 changes on a branch based on `fix/staging-review-remediation` or on a fresh branch based on its latest commit; do not implement directly on `staging`.
 
 ---
 
@@ -29,10 +30,14 @@
 
 - `vitest.config.ts` — Vitest/jsdom configuration and `@` alias used by unit/DOM tests.
 - `src/lib/observeMatches.js` — recurring MutationObserver helper for Salesforce SPA rerenders.
+- `src/features/popupMinimizer.js` — side-effect-free popup minimization/start logic.
+- `src/features/flowSidebar.js` — side-effect-free Flow Builder sidebar logic.
+- `src/features/installedPackages.js` — side-effect-free Installed Packages initialization/sorting logic.
+- `src/features/loginPage.js` — side-effect-free login-page DOM transformation logic.
 - `tests/domLifecycle.test.js` — `waitForElement` and `observeMatches` lifecycle tests.
 - `tests/addGlobalStyle.test.js` — document-start-safe style insertion tests.
-- `tests/general.test.js` — docked-popup minimization tests.
-- `tests/flowMainUI.test.js` — Flow Builder sidebar delayed/replacement render tests.
+- `tests/popupMinimizer.test.js` — docked-popup minimization tests.
+- `tests/flowSidebar.test.js` — Flow Builder sidebar delayed/replacement render tests.
 - `tests/installedPackages.test.js` — Installed Packages initialization/sorting/idempotency tests.
 - `tests/loginPage.test.js` — login-page node-movement and null-guard tests.
 - `tests/manifest.test.ts` — source-manifest behavior tests.
@@ -45,10 +50,10 @@
 - `manifest.ts` — testable manifest factory, remove background/scripting/host permissions, add current Installed Packages routes.
 - `src/lib/waitForElement.js` — bounded wait with timeout and abort cleanup.
 - `src/lib/addGlobalStyle.js` — asynchronous, bounded, idempotent style insertion.
-- `src/scripts/general.js` — recurring popup minimization.
-- `src/scripts/flowMainUI.js` — observe the final sidebar selector and reapply after rerender.
-- `src/scripts/installedPackages.js` — asynchronous table initialization, table-rooted helpers, null guards, idempotent sorting UI.
-- `src/scripts/loginPage.js` — move original `#manager`, null-guard no-login content, stable style ID.
+- `src/scripts/general.js` — thin popup-minimizer entrypoint.
+- `src/scripts/flowMainUI.js` — Flow Builder styles plus thin sidebar-observer entrypoint.
+- `src/scripts/installedPackages.js` — Installed Packages styles plus thin initialization entrypoint.
+- `src/scripts/loginPage.js` — login styles plus bounded startup orchestration.
 - `src/scripts/flowDebugUI.js` — stable style ID.
 - `src/scripts/lightningPage.js` — stable style ID.
 - `src/App.tsx` — valid icon sizing, alt text, normal-tab GitHub link.
@@ -217,7 +222,7 @@ describe("extension manifest", () => {
 });
 ```
 
-- [ ] **Step 2: Run the manifest tests and verify they fail**
+- [ ] **Step 2: Run the manifest tests and verify they fail for the expected reason**
 
 Run:
 
@@ -225,7 +230,7 @@ Run:
 npm test -- tests/manifest.test.ts
 ```
 
-Expected: FAIL because `buildManifest` does not exist and/or the current manifest still contains background/scripting and lacks the modern routes.
+Expected: FAIL because `buildManifest` does not exist and/or the current manifest still contains background/scripting and lacks the modern routes. Fix test setup errors until the test reaches that behavioral failure before changing production code.
 
 - [ ] **Step 3: Refactor `manifest.ts` into a plain factory plus CRXJS wrapper**
 
@@ -311,7 +316,7 @@ export function buildManifest(env: ManifestEnvironment) {
 export const manifest = defineManifest((env) => buildManifest(env));
 ```
 
-If TypeScript reports that the CRXJS environment has a richer type than `ManifestEnvironment`, keep the structural `{ mode: string }` interface and let the richer value flow into it; do not weaken this to `any` unless CRXJS typing makes structural inference impossible.
+If TypeScript reports a structural mismatch between the CRXJS environment and `ManifestEnvironment`, keep the explicit `{ mode: string }` boundary and type the CRXJS callback parameter narrowly enough to pass `env.mode`; do not replace the manifest factory with `any`-typed data.
 
 - [ ] **Step 4: Delete the obsolete background injector**
 
@@ -331,8 +336,6 @@ Expected: both tests pass.
 
 - [ ] **Step 6: Type-check and build the refactored manifest**
 
-Run:
-
 ```bash
 npx tsc --noEmit
 npm run build
@@ -340,12 +343,12 @@ npm run build
 
 Expected: both commands exit 0.
 
-- [ ] **Step 7: Inspect the built `dist/manifest.json` manually before committing**
+- [ ] **Step 7: Inspect the built `dist/manifest.json` before committing**
 
 Run:
 
 ```bash
-node -e 'const m=require("./dist/manifest.json"); console.log(JSON.stringify({background:m.background,permissions:m.permissions,host_permissions:m.host_permissions,content_scripts:m.content_scripts},null,2))'
+node --input-type=module -e 'import("./dist/manifest.json", { with: { type: "json" } }).then(({default:m}) => console.log(JSON.stringify({background:m.background,permissions:m.permissions,host_permissions:m.host_permissions,content_scripts:m.content_scripts},null,2)))'
 ```
 
 Expected:
@@ -375,7 +378,7 @@ git commit -m "fix: remove install-time content script injection"
 - Produces: `waitForElement(selector, options?) => Promise<Element | null>` with `{ root = document, timeoutMs = 10000, signal }`.
 - Produces: `observeMatches(selector, callback, options?) => () => void` with `{ root = document, includeExisting = true }`.
 
-- [ ] **Step 1: Write the lifecycle tests**
+- [ ] **Step 1: Write lifecycle tests**
 
 Create `tests/domLifecycle.test.js`:
 
@@ -392,6 +395,7 @@ describe("DOM lifecycle helpers", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -437,6 +441,20 @@ describe("DOM lifecycle helpers", () => {
     expect(disconnect).toHaveBeenCalled();
   });
 
+  it("defers observation until a Document receives its documentElement", async () => {
+    const root = document.implementation.createDocument(null, null);
+    const promise = waitForElement(".target", { root, timeoutMs: 100 });
+    const html = root.createElement("html");
+    const body = root.createElement("body");
+    const target = root.createElement("div");
+    target.setAttribute("class", "target");
+    body.append(target);
+    html.append(body);
+    root.append(html);
+
+    await expect(promise).resolves.toBe(target);
+  });
+
   it("observes existing and newly inserted matches", async () => {
     document.body.innerHTML = '<div class="target" id="first"></div>';
     const callback = vi.fn();
@@ -446,7 +464,7 @@ describe("DOM lifecycle helpers", () => {
     second.className = "target";
     second.id = "second";
     document.body.append(second);
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(callback).toHaveBeenCalledWith(document.querySelector("#first"));
     expect(callback).toHaveBeenCalledWith(second);
@@ -461,22 +479,22 @@ describe("DOM lifecycle helpers", () => {
     const target = document.createElement("div");
     target.className = "target";
     document.body.append(target);
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(callback).not.toHaveBeenCalled();
   });
 });
 ```
 
-- [ ] **Step 2: Run the tests and verify failure**
+If jsdom does not permit MutationObserver observation on the element-less XML `Document` returned by `createDocument`, retain the same behavioral requirement and replace only that one fixture with the smallest DOM implementation supported by jsdom that begins without `documentElement`; do not drop the requirement from the suite.
 
-Run:
+- [ ] **Step 2: Run the tests and verify behavioral failure**
 
 ```bash
 npm test -- tests/domLifecycle.test.js
 ```
 
-Expected: FAIL because `observeMatches.js` does not exist and current `waitForElement` has no timeout/abort contract.
+Expected: FAIL because `observeMatches.js` does not exist and current `waitForElement` has no timeout/abort/deferred-root contract.
 
 - [ ] **Step 3: Implement bounded `waitForElement`**
 
@@ -485,8 +503,12 @@ Replace `src/lib/waitForElement.js` with:
 ```js
 const DEFAULT_TIMEOUT_MS = 10_000;
 
+function isDocument(root) {
+  return root?.nodeType === Node.DOCUMENT_NODE;
+}
+
 function getObservationTarget(root) {
-  return root instanceof Document ? root.documentElement : root;
+  return isDocument(root) ? root.documentElement : root;
 }
 
 export default function waitForElement(
@@ -537,11 +559,13 @@ export default function waitForElement(
       return true;
     };
 
-    if (!startObserver() && root instanceof Document) {
+    if (!startObserver() && isDocument(root)) {
       rootObserver = new MutationObserver(() => {
         if (startObserver()) {
           rootObserver?.disconnect();
           rootObserver = null;
+          const match = findMatch();
+          if (match) finish(match);
         }
       });
       rootObserver.observe(root, { childList: true, subtree: true });
@@ -557,19 +581,21 @@ export default function waitForElement(
 }
 ```
 
-If Vitest/jsdom exposes `Document` differently in the test runtime, use `root.nodeType === Node.DOCUMENT_NODE` instead of `instanceof Document`; keep the same behavior and tests.
-
 - [ ] **Step 4: Implement recurring `observeMatches`**
 
 Create `src/lib/observeMatches.js`:
 
 ```js
+function isDocument(root) {
+  return root?.nodeType === Node.DOCUMENT_NODE;
+}
+
 function getObservationTarget(root) {
-  return root instanceof Document ? root.documentElement : root;
+  return isDocument(root) ? root.documentElement : root;
 }
 
 function visitMatches(node, selector, callback) {
-  if (!(node instanceof Element)) return;
+  if (node?.nodeType !== Node.ELEMENT_NODE) return;
 
   if (node.matches(selector)) callback(node);
   node.querySelectorAll(selector).forEach(callback);
@@ -603,7 +629,7 @@ export default function observeMatches(
     return true;
   };
 
-  if (!startObserver() && root instanceof Document) {
+  if (!startObserver() && isDocument(root)) {
     rootObserver = new MutationObserver(() => {
       if (startObserver()) {
         rootObserver?.disconnect();
@@ -629,7 +655,7 @@ npm test -- tests/domLifecycle.test.js
 
 Expected: all lifecycle tests pass.
 
-- [ ] **Step 6: Run existing test suite and type/build checks**
+- [ ] **Step 6: Run the existing suite and compiler/build checks**
 
 ```bash
 npm test
@@ -714,7 +740,7 @@ describe("addGlobalStyle", () => {
 });
 ```
 
-- [ ] **Step 2: Run tests and verify the document-start case fails**
+- [ ] **Step 2: Run tests and verify the document-start/idempotency behavior fails**
 
 ```bash
 npm test -- tests/addGlobalStyle.test.js
@@ -732,7 +758,7 @@ import waitForElement from "./waitForElement";
 export default async function addGlobalStyle(css, { id } = {}) {
   if (id) {
     const existing = document.getElementById(id);
-    if (existing instanceof HTMLStyleElement) return existing;
+    if (existing?.tagName === "STYLE") return existing;
   }
 
   const head = document.head ?? (await waitForElement("head"));
@@ -740,7 +766,7 @@ export default async function addGlobalStyle(css, { id } = {}) {
 
   if (id) {
     const existing = document.getElementById(id);
-    if (existing instanceof HTMLStyleElement) return existing;
+    if (existing?.tagName === "STYLE") return existing;
   }
 
   const style = document.createElement("style");
@@ -754,7 +780,7 @@ export default async function addGlobalStyle(css, { id } = {}) {
 
 - [ ] **Step 4: Give every retained style block a stable ID**
 
-Keep each script's CSS text unchanged; change only the helper call shape:
+Keep each script's CSS text unchanged; change only the helper call shape. Use `void` because content-script startup does not need to await style installation:
 
 ```js
 void addGlobalStyle(`...existing css...`, {
@@ -792,19 +818,21 @@ git commit -m "fix: make global style insertion reliable"
 
 ---
 
-### Task 5: Restore popup minimization for existing and later popups
+### Task 5: Restore popup minimization without test-time entrypoint side effects
 
 **Files:**
+- Create: `src/features/popupMinimizer.js`
 - Modify: `src/scripts/general.js`
-- Create: `tests/general.test.js`
+- Create: `tests/popupMinimizer.test.js`
 
 **Interfaces:**
 - Consumes: `observeMatches(selector, callback, options?)` from Task 3.
-- Produces: exported `minimizePopup(popup)` and `startPopupMinimizer()` for deterministic testing.
+- Produces: `minimizePopup(popup)` and `startPopupMinimizer({ root }?) => () => void` from the feature module.
+- Entrypoint: `src/scripts/general.js` imports `startPopupMinimizer()` and starts it once; tests do not import this entrypoint.
 
-- [ ] **Step 1: Write popup behavior tests**
+- [ ] **Step 1: Write popup behavior tests against the side-effect-free feature module**
 
-Create `tests/general.test.js`:
+Create `tests/popupMinimizer.test.js`:
 
 ```js
 import { beforeEach, describe, expect, it } from "vitest";
@@ -812,7 +840,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   minimizePopup,
   startPopupMinimizer,
-} from "@/scripts/general";
+} from "@/features/popupMinimizer";
 
 function popupFixture() {
   const popup = document.createElement("div");
@@ -834,14 +862,18 @@ describe("popup minimization", () => {
 
     expect(popup.classList.contains("MINIMIZED")).toBe(true);
     expect(popup.classList.contains("DOCKED")).toBe(false);
-    expect(popup.querySelector(".slds-docked-composer")?.classList.contains("slds-is-open")).toBe(false);
+    expect(
+      popup
+        .querySelector(".slds-docked-composer")
+        ?.classList.contains("slds-is-open"),
+    ).toBe(false);
   });
 
   it("minimizes a popup inserted after startup", async () => {
     const stop = startPopupMinimizer();
     const popup = popupFixture();
     document.body.append(popup);
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(popup.classList.contains("MINIMIZED")).toBe(true);
     stop();
@@ -860,17 +892,17 @@ describe("popup minimization", () => {
 });
 ```
 
-- [ ] **Step 2: Run the tests and verify failure**
+- [ ] **Step 2: Run the test and verify RED**
 
 ```bash
-npm test -- tests/general.test.js
+npm test -- tests/popupMinimizer.test.js
 ```
 
-Expected: FAIL because current `general.js` exports no testable functions and the callback passed to `waitForElement` never executes.
+Expected: FAIL because `src/features/popupMinimizer.js` does not exist. This is the desired red state; do not point the test at the old content-script entrypoint as a workaround.
 
-- [ ] **Step 3: Replace the broken one-time wait with recurring observation**
+- [ ] **Step 3: Implement the feature module**
 
-Refactor `src/scripts/general.js` to this behavior:
+Create `src/features/popupMinimizer.js`:
 
 ```js
 import observeMatches from "@/lib/observeMatches";
@@ -887,38 +919,48 @@ export function minimizePopup(popup) {
   popupContent.classList.remove("slds-is-open");
 }
 
-export function startPopupMinimizer() {
+export function startPopupMinimizer({ root = document } = {}) {
   return observeMatches(POPUP_SELECTOR, minimizePopup, {
+    root,
     includeExisting: true,
   });
 }
+```
+
+- [ ] **Step 4: Reduce `general.js` to the content-script entrypoint**
+
+Replace `src/scripts/general.js` with:
+
+```js
+import { startPopupMinimizer } from "@/features/popupMinimizer";
 
 startPopupMinimizer();
 ```
 
-Do not add global polling or an interval.
-
-- [ ] **Step 4: Run popup and lifecycle tests**
+- [ ] **Step 5: Run popup and lifecycle tests**
 
 ```bash
-npm test -- tests/general.test.js tests/domLifecycle.test.js
+npm test -- tests/popupMinimizer.test.js tests/domLifecycle.test.js
 ```
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Run the full suite/build**
+- [ ] **Step 6: Verify the regression test is genuine**
+
+Temporarily revert only the functional class mutation in `minimizePopup` (for example, comment out `popup.classList.add("MINIMIZED")`), rerun:
+
+```bash
+npm test -- tests/popupMinimizer.test.js
+```
+
+Expected: FAIL. Restore the implementation immediately and rerun the same command; expected PASS. Do not commit the temporary mutation.
+
+- [ ] **Step 7: Run the full suite/build and commit**
 
 ```bash
 npm test
 npm run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 6: Commit popup behavior**
-
-```bash
-git add src/scripts/general.js tests/general.test.js
+git add src/features/popupMinimizer.js src/scripts/general.js tests/popupMinimizer.test.js
 git commit -m "fix: restore recurring popup minimization"
 ```
 
@@ -927,21 +969,23 @@ git commit -m "fix: restore recurring popup minimization"
 ### Task 6: Make the Flow Builder sidebar survive delayed and replacement renders
 
 **Files:**
+- Create: `src/features/flowSidebar.js`
 - Modify: `src/scripts/flowMainUI.js`
-- Create: `tests/flowMainUI.test.js`
+- Create: `tests/flowSidebar.test.js`
 
 **Interfaces:**
-- Consumes: `observeMatches` from Task 3 and `addGlobalStyle` from Task 4.
-- Produces: exported `increaseSidebar(sidebar)` and `startSidebarObserver()`.
+- Consumes: `observeMatches` from Task 3.
+- Produces: `increaseSidebar(sidebar)` and `startSidebarObserver({ root }?) => () => void` from the feature module.
+- Entrypoint: `flowMainUI.js` retains only CSS installation plus `startSidebarObserver()` startup.
 
-- [ ] **Step 1: Write delayed/replacement sidebar tests**
+- [ ] **Step 1: Write delayed/replacement sidebar tests against the feature module**
 
-Create `tests/flowMainUI.test.js`:
+Create `tests/flowSidebar.test.js`:
 
 ```js
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { startSidebarObserver } from "@/scripts/flowMainUI";
+import { startSidebarObserver } from "@/features/flowSidebar";
 
 const SIDEBAR_HTML = `
   <builder_platform_interaction-container-common>
@@ -965,7 +1009,7 @@ describe("Flow Builder sidebar", () => {
   it("adjusts the final nested sidebar when it appears later", async () => {
     const stop = startSidebarObserver();
     document.body.innerHTML = SIDEBAR_HTML;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const sidebar = document.querySelector(".left-panel");
     expect(sidebar?.classList.contains("slds-size_medium")).toBe(false);
@@ -986,29 +1030,32 @@ describe("Flow Builder sidebar", () => {
           <div id="replacement" class="left-panel slds-size_medium"></div>
         </builder_platform_interaction-left-panel>
       </div></div></div>`;
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(document.querySelector("#replacement")?.classList.contains("slds-size_large")).toBe(true);
+    expect(
+      document
+        .querySelector("#replacement")
+        ?.classList.contains("slds-size_large"),
+    ).toBe(true);
     stop();
   });
 });
 ```
 
-- [ ] **Step 2: Run tests and verify failure**
+- [ ] **Step 2: Run tests and verify RED**
 
 ```bash
-npm test -- tests/flowMainUI.test.js
+npm test -- tests/flowSidebar.test.js
 ```
 
-Expected: FAIL because current code waits for an outer component only once and does not export/start a recurring final-target observer.
+Expected: FAIL because `src/features/flowSidebar.js` does not exist.
 
-- [ ] **Step 3: Refactor Flow Builder behavior around the final selector**
+- [ ] **Step 3: Implement the side-effect-free Flow Builder feature**
 
-Keep the existing CSS and stable style ID from Task 4. Define:
+Create `src/features/flowSidebar.js`:
 
 ```js
-import addGlobalStyle from "../lib/addGlobalStyle";
-import observeMatches from "../lib/observeMatches";
+import observeMatches from "@/lib/observeMatches";
 
 const SIDEBAR_SELECTOR = [
   "builder_platform_interaction-container-common",
@@ -1019,45 +1066,50 @@ const SIDEBAR_SELECTOR = [
   ".left-panel",
 ].join(" ");
 
-// existing addGlobalStyle(...) call remains here
-
 export function increaseSidebar(sidebar) {
   sidebar.classList.remove("slds-size_medium");
   sidebar.classList.add("slds-size_large");
 }
 
-export function startSidebarObserver() {
+export function startSidebarObserver({ root = document } = {}) {
   return observeMatches(SIDEBAR_SELECTOR, increaseSidebar, {
+    root,
     includeExisting: true,
   });
 }
+```
+
+- [ ] **Step 4: Turn `flowMainUI.js` into style + startup orchestration**
+
+Keep its existing CSS block and stable Task 4 style ID. Replace the old `waitForElement(...)` import/startup and nested `increaseSidebar()` function with:
+
+```js
+import { startSidebarObserver } from "@/features/flowSidebar";
+import addGlobalStyle from "../lib/addGlobalStyle";
+
+void addGlobalStyle(`...existing Flow Main CSS unchanged...`, {
+  id: "salesforce-improved-flow-main",
+});
 
 startSidebarObserver();
 ```
 
-Delete the old `waitForElement("builder_platform_interaction-left-panel")` path and nested query chain.
+The actual file must contain the existing CSS text, not the ellipsis shown here; copy it unchanged from the current file.
 
-- [ ] **Step 4: Run Flow Builder and lifecycle tests**
+- [ ] **Step 5: Run Flow Builder and lifecycle tests**
 
 ```bash
-npm test -- tests/flowMainUI.test.js tests/domLifecycle.test.js
+npm test -- tests/flowSidebar.test.js tests/domLifecycle.test.js
 ```
 
 Expected: all pass.
 
-- [ ] **Step 5: Run the full suite/build**
+- [ ] **Step 6: Run full suite/build and commit**
 
 ```bash
 npm test
 npm run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 6: Commit Flow Builder resilience**
-
-```bash
-git add src/scripts/flowMainUI.js tests/flowMainUI.test.js
+git add src/features/flowSidebar.js src/scripts/flowMainUI.js tests/flowSidebar.test.js
 git commit -m "fix: reapply Flow Builder sidebar sizing after rerenders"
 ```
 
@@ -1066,25 +1118,27 @@ git commit -m "fix: reapply Flow Builder sidebar sizing after rerenders"
 ### Task 7: Harden Installed Packages initialization and sorting
 
 **Files:**
+- Create: `src/features/installedPackages.js`
 - Modify: `src/scripts/installedPackages.js`
 - Create: `tests/installedPackages.test.js`
 
 **Interfaces:**
-- Consumes: `waitForElement` and `addGlobalStyle`.
-- Produces: exported `initializeInstalledPackages(table)`, `startInstalledPackages(options?)`, and retained sorting helpers rooted to a concrete table.
+- Consumes: `waitForElement` from Task 3.
+- Produces: `initializeInstalledPackages(table)` and `startInstalledPackages({ root, timeoutMs }?) => Promise<Element | null>` from the feature module.
 - Idempotency marker: `data-salesforce-improved-initialized="true"` on the initialized table.
+- Entrypoint: `src/scripts/installedPackages.js` retains CSS installation and calls `void startInstalledPackages()`.
 
 - [ ] **Step 1: Write Installed Packages regression tests**
 
-Create `tests/installedPackages.test.js` with a reusable fixture:
+Create `tests/installedPackages.test.js`:
 
 ```js
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   initializeInstalledPackages,
   startInstalledPackages,
-} from "@/scripts/installedPackages";
+} from "@/features/installedPackages";
 
 function tableFixture() {
   const wrapper = document.createElement("div");
@@ -1104,6 +1158,12 @@ function tableFixture() {
 describe("Installed Packages", () => {
   beforeEach(() => {
     document.body.innerHTML = "";
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("exits without throwing when the table never appears", async () => {
@@ -1112,7 +1172,6 @@ describe("Installed Packages", () => {
     await vi.advanceTimersByTimeAsync(25);
 
     await expect(promise).resolves.toBeNull();
-    vi.useRealTimers();
   });
 
   it("initializes a table that appears asynchronously", async () => {
@@ -1143,52 +1202,77 @@ describe("Installed Packages", () => {
     initializeInstalledPackages(table);
 
     expect(table.querySelectorAll("tr.headerRow th a a")).toHaveLength(0);
-    expect(table.querySelectorAll("tr.headerRow th > a")).toHaveLength(3);
+    expect(
+      table.querySelectorAll(
+        "tr.headerRow th > a[data-salesforce-improved-sort-link]",
+      ),
+    ).toHaveLength(3);
   });
 
-  it("does not attach duplicate click behavior", () => {
+  it("attaches one sorter click listener per table", () => {
     const table = tableFixture();
     document.body.append(table);
+    const headerRow = table.querySelector("tr.headerRow");
+    const addListener = vi.spyOn(EventTarget.prototype, "addEventListener");
 
     initializeInstalledPackages(table);
     initializeInstalledPackages(table);
 
-    expect(table.dataset.salesforceImprovedInitialized).toBe("true");
+    const clickRegistrations = addListener.mock.calls.filter(
+      (call, index) =>
+        addListener.mock.instances[index] === headerRow && call[0] === "click",
+    );
+    expect(clickRegistrations).toHaveLength(1);
   });
 });
 ```
 
-- [ ] **Step 2: Run tests and verify the missing-table path fails**
+- [ ] **Step 2: Run tests and verify RED**
 
 ```bash
 npm test -- tests/installedPackages.test.js
 ```
 
-Expected: FAIL because current module synchronously obtains `table`, calls `sortRows(null, 2)`, and has no asynchronous/idempotent initializer.
+Expected: FAIL because `src/features/installedPackages.js` does not exist. The old entrypoint must not be imported into the test as a shortcut because it currently crashes during module startup when the table is absent.
 
-- [ ] **Step 3: Refactor all table operations to accept a concrete table root**
+- [ ] **Step 3: Implement table-rooted transformations in the feature module**
 
-Keep the existing style rules and Task 4 stable style ID. Change helper signatures to:
-
-```js
-function replaceRowDividers(table) { ... }
-function addSortableClass(table) { ... }
-function replaceTableHeaderWithTableData(table) { ... }
-function makeSortable(table) { ... }
-function sortRows(table, columnIndex) { ... }
-```
-
-Every query that belongs to the Installed Packages table should be rooted at `table`, e.g.:
+Create `src/features/installedPackages.js`. Begin with:
 
 ```js
-const rows = table.querySelectorAll("tbody tr.dataRow");
+import waitForElement from "@/lib/waitForElement";
+
+function replaceTableHeaderWithTableData(table) {
+  table.querySelectorAll("tr.dataRow").forEach((row) => {
+    const thElement = row.querySelector("th[scope='row']");
+    if (!thElement) return;
+
+    const newElement = document.createElement("td");
+    newElement.classList.add("dataCell");
+    thElement.childNodes.forEach((child) => {
+      newElement.appendChild(child.cloneNode(true));
+    });
+    row.replaceChild(newElement, thElement);
+  });
+}
+
+function replaceRowDividers(table) {
+  table.querySelectorAll("tbody tr.dataRow").forEach((row) => {
+    if (row.classList.contains("last")) {
+      row.classList.remove("last");
+      row.classList.add("first");
+    }
+  });
+}
+
+function addSortableClass(table) {
+  table.classList.add("sortable");
+}
 ```
 
-Do not use document-wide `querySelectorAll("table.sortable")` after a specific table has already been resolved.
+- [ ] **Step 4: Implement idempotent header links and one delegated click listener**
 
-- [ ] **Step 4: Make header wrapping and click handling idempotent**
-
-Implement the sortable header logic with one table-level initialization marker:
+Continue the feature module with:
 
 ```js
 function makeSortable(table) {
@@ -1196,64 +1280,71 @@ function makeSortable(table) {
   if (!headerRow) return;
 
   headerRow.querySelectorAll("th").forEach((header) => {
-    if (header.firstElementChild?.matches("a[data-salesforce-improved-sort-link]")) {
-      return;
+    let link = header.querySelector(":scope > a");
+
+    if (!link) {
+      link = document.createElement("a");
+      link.href = "#";
+      while (header.firstChild) link.appendChild(header.firstChild);
+      header.appendChild(link);
     }
 
-    const link = document.createElement("a");
-    link.href = "#";
     link.dataset.salesforceImprovedSortLink = "true";
-    while (header.firstChild) link.appendChild(header.firstChild);
-    header.appendChild(link);
   });
 
   headerRow.addEventListener("click", sortTableFunction(table));
 }
-```
 
-Use a robust event target in `sortTableFunction`:
-
-```js
 function sortTableFunction(table) {
   return (event) => {
-    if (!(event.target instanceof Element)) return;
-    const link = event.target.closest("a[data-salesforce-improved-sort-link]");
-    if (!link) return;
+    if (event.target?.nodeType !== Node.ELEMENT_NODE) return;
+    const link = event.target.closest(
+      "a[data-salesforce-improved-sort-link]",
+    );
+    const header = link?.parentElement;
+    if (!link || !header) return;
 
-    sortRows(table, siblingIndex(link.parentElement));
+    sortRows(table, siblingIndex(header));
     event.preventDefault();
   };
 }
 ```
 
-Guard `link.parentElement` before calling `siblingIndex`; if it is absent, return.
+The table-level initialization marker added in Step 6 is what guarantees `makeSortable()` is called only once per table.
 
-- [ ] **Step 5: Make sorting fail open when expected structure is missing**
+- [ ] **Step 5: Implement fail-open sorting**
 
-Use this shape:
+Continue with:
 
 ```js
 function sortRows(table, columnIndex) {
   const tbody = table.querySelector("tbody");
   if (!tbody) return;
 
-  const rows = table.querySelectorAll("tbody tr");
   const selector = `td:nth-child(${columnIndex + 1})`;
   const values = [];
 
-  rows.forEach((row) => {
+  table.querySelectorAll("tbody tr").forEach((row) => {
     const node = row.querySelector(selector);
-    if (node) values.push({ value: node.textContent ?? "", row });
+    if (node) {
+      values.push({ value: node.textContent ?? "", row });
+    }
   });
 
   values.sort((a, b) => a.value.localeCompare(b.value));
   values.forEach(({ row }) => tbody.appendChild(row));
 }
+
+function siblingIndex(node) {
+  let count = 0;
+  while ((node = node.previousElementSibling)) count += 1;
+  return count;
+}
 ```
 
-Keep the existing `th[scope='row']` → `td.dataCell` transformation behavior, but guard every missing expected node.
+- [ ] **Step 6: Add explicit initialization and bounded startup**
 
-- [ ] **Step 6: Add the explicit initializer and bounded startup**
+Complete the feature module:
 
 ```js
 export function initializeInstalledPackages(table) {
@@ -1269,16 +1360,34 @@ export function initializeInstalledPackages(table) {
   return table;
 }
 
-export async function startInstalledPackages({ timeoutMs = 10_000 } = {}) {
-  const table = await waitForElement("table.list", { timeoutMs });
+export async function startInstalledPackages({
+  root = document,
+  timeoutMs = 10_000,
+} = {}) {
+  const table = await waitForElement("table.list", { root, timeoutMs });
   if (!table) return null;
   return initializeInstalledPackages(table);
 }
+```
+
+- [ ] **Step 7: Reduce `src/scripts/installedPackages.js` to CSS + startup**
+
+Keep the existing CSS exactly, with Task 4's stable ID, and replace all transformation/sorting code in the entrypoint with:
+
+```js
+import { startInstalledPackages } from "@/features/installedPackages";
+import addGlobalStyle from "../lib/addGlobalStyle";
+
+void addGlobalStyle(`...existing Installed Packages CSS unchanged...`, {
+  id: "salesforce-improved-installed-packages",
+});
 
 void startInstalledPackages();
 ```
 
-- [ ] **Step 7: Run Installed Packages tests**
+The actual file must contain the existing CSS text, not the ellipsis shown here.
+
+- [ ] **Step 8: Run Installed Packages tests**
 
 ```bash
 npm test -- tests/installedPackages.test.js
@@ -1286,19 +1395,22 @@ npm test -- tests/installedPackages.test.js
 
 Expected: all pass.
 
-- [ ] **Step 8: Run full tests/build**
+- [ ] **Step 9: Verify the original null-table defect is protected by RED/GREEN**
+
+Temporarily change `startInstalledPackages` to call `initializeInstalledPackages(table)` without the `if (!table) return null` guard and run:
+
+```bash
+npm test -- tests/installedPackages.test.js
+```
+
+Expected: the missing-table test fails. Restore the guard and rerun; expected PASS. Do not commit the temporary mutation.
+
+- [ ] **Step 10: Run full tests/build and commit**
 
 ```bash
 npm test
 npm run build
-```
-
-Expected: exit code 0.
-
-- [ ] **Step 9: Commit Installed Packages hardening**
-
-```bash
-git add src/scripts/installedPackages.js tests/installedPackages.test.js
+git add src/features/installedPackages.js src/scripts/installedPackages.js tests/installedPackages.test.js
 git commit -m "fix: harden Installed Packages DOM handling"
 ```
 
@@ -1307,14 +1419,16 @@ git commit -m "fix: harden Installed Packages DOM handling"
 ### Task 8: Preserve login-page node identity and guard missing containers
 
 **Files:**
+- Create: `src/features/loginPage.js`
 - Modify: `src/scripts/loginPage.js`
 - Create: `tests/loginPage.test.js`
 
 **Interfaces:**
-- Produces: exported `moveSavedLoginsEditorToRight()` and `sortSavedUsernames()` for deterministic tests.
-- Preserves: existing login layout/clone structure except `#manager` itself is moved, not cloned.
+- Produces: `moveLoginsToRight()`, `moveSavedLoginsEditorToRight()`, and `sortSavedUsernames()` in a side-effect-free feature module.
+- Entrypoint: `src/scripts/loginPage.js` retains CSS and page-wait orchestration only.
+- Preserves: existing login layout behavior; only `#manager` changes from clone/remove to moving the original node.
 
-- [ ] **Step 1: Write login-page regression tests**
+- [ ] **Step 1: Write login-page regression tests against the feature module**
 
 Create `tests/loginPage.test.js`:
 
@@ -1324,7 +1438,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   moveSavedLoginsEditorToRight,
   sortSavedUsernames,
-} from "@/scripts/loginPage";
+} from "@/features/loginPage";
 
 describe("login page behavior", () => {
   beforeEach(() => {
@@ -1356,19 +1470,17 @@ describe("login page behavior", () => {
 });
 ```
 
-If the current `sortSavedUsernames()` considers one child to be the no-login case, retain that fixture. The purpose of the second test is specifically that `#right #content` is absent when the branch is reached.
-
-- [ ] **Step 2: Run tests and verify failure**
+- [ ] **Step 2: Run tests and verify RED**
 
 ```bash
 npm test -- tests/loginPage.test.js
 ```
 
-Expected: the identity/listener test fails because current code clones `#manager`; the missing parent case may throw when assigning `innerHTML`.
+Expected: FAIL because `src/features/loginPage.js` does not exist.
 
-- [ ] **Step 3: Move the original `#manager`**
+- [ ] **Step 3: Move the existing DOM functions into the feature module**
 
-Replace only the cloning logic:
+Create `src/features/loginPage.js`. Move `moveLoginsToRight()` from the current entrypoint unchanged except for exporting it. Implement the saved-login editor move as:
 
 ```js
 export function moveSavedLoginsEditorToRight() {
@@ -1381,9 +1493,7 @@ export function moveSavedLoginsEditorToRight() {
 }
 ```
 
-- [ ] **Step 4: Guard the no-saved-login parent and export the function**
-
-In `sortSavedUsernames()`:
+Move `sortSavedUsernames()` into this module and preserve its sorting logic, but change the no-saved-login branch to:
 
 ```js
 if (sortedLogins.length <= 1) {
@@ -1400,22 +1510,51 @@ if (sortedLogins.length <= 1) {
 }
 ```
 
-Export `sortSavedUsernames` and `moveSavedLoginsEditorToRight`. Keep `moveLoginsToRight()` and the existing startup sequence otherwise unchanged.
+Export `sortSavedUsernames()`.
 
-- [ ] **Step 5: Run login tests and full suite**
+- [ ] **Step 4: Make `src/scripts/loginPage.js` a style + bounded-startup entrypoint**
+
+Keep its existing CSS text with Task 4's stable style ID, import the feature functions and `waitForElement`, then use:
+
+```js
+void waitForElement("#main").then((main) => {
+  if (!main) return;
+  moveLoginsToRight();
+  moveSavedLoginsEditorToRight();
+});
+
+void waitForElement("#idlist").then((idlist) => {
+  if (!idlist) return;
+  setTimeout(sortSavedUsernames, 500);
+});
+```
+
+Retain the existing 500 ms sort delay; changing that timing is out of scope.
+
+- [ ] **Step 5: Run login tests**
 
 ```bash
 npm test -- tests/loginPage.test.js
-npm test
-npm run build
 ```
 
-Expected: all commands exit 0.
+Expected: both pass.
 
-- [ ] **Step 6: Commit login-page hardening**
+- [ ] **Step 6: Verify listener preservation is genuine**
+
+Temporarily replace `rightContainer.appendChild(savedLoginEditor)` with the old clone/remove behavior, rerun:
 
 ```bash
-git add src/scripts/loginPage.js tests/loginPage.test.js
+npm test -- tests/loginPage.test.js
+```
+
+Expected: listener/identity test fails. Restore the move implementation and rerun; expected PASS. Do not commit the temporary mutation.
+
+- [ ] **Step 7: Run full suite/build and commit**
+
+```bash
+npm test
+npm run build
+git add src/features/loginPage.js src/scripts/loginPage.js tests/loginPage.test.js
 git commit -m "fix: preserve saved-login editor behavior"
 ```
 
@@ -1430,7 +1569,7 @@ git commit -m "fix: preserve saved-login editor behavior"
 
 **Interfaces:**
 - Preserves: popup layout and Settings button behavior.
-- Changes: icon uses valid Tailwind dimensions and alt text; GitHub link opens a normal tab.
+- Changes: icon uses valid Tailwind dimensions and alt text; GitHub link opens a normal browser tab.
 
 - [ ] **Step 1: Correct popup markup**
 
@@ -1439,7 +1578,7 @@ In `src/App.tsx`, change the icon to:
 ```tsx
 <img
   src={icon}
-  className="w-12 h-12"
+  className="h-12 w-12"
   alt="Salesforce Improved extension icon"
 />
 ```
@@ -1461,7 +1600,7 @@ Do not redesign the popup or alter the Settings button behavior.
 
 - [ ] **Step 2: Correct README unpacked-extension instructions**
 
-Replace the current split instruction that says `src` should be loaded after `npm run dev`. Document that the CRXJS-generated unpacked extension is loaded from `dist` for local development/build output. Include this note immediately after the load-unpacked steps:
+Replace the current split instruction that says `src` should be loaded after `npm run dev`. Document that the CRXJS-generated unpacked extension is loaded from `dist` for local development/build output. Include this note immediately after the Load Unpacked steps:
 
 ```markdown
 After installing or updating the extension, refresh any Salesforce tabs that were already open so Chrome loads the new static content scripts on those pages.
@@ -1481,11 +1620,9 @@ to:
 "css": "src/styles/globals.css"
 ```
 
-Phase 2 will delete `components.json` if shadcn configuration is no longer used.
+Phase 2 will delete `components.json` after removing unused shadcn infrastructure.
 
 - [ ] **Step 4: Verify static UI/docs changes**
-
-Run:
 
 ```bash
 npx tsc --noEmit
@@ -1493,9 +1630,9 @@ npm run lint
 npm run build
 ```
 
-At this point `npm run lint` still uses the repository's original JS/TS extension list; Task 10 will expand it to TSX and fix any newly exposed lint errors.
+At this point `npm run lint` still uses the repository's original JS/TS extension list; Task 10 expands it to TSX and fixes newly exposed lint errors.
 
-Expected: typecheck and build exit 0; record any lint issue rather than weakening rules to hide it.
+Expected: typecheck and build exit 0. If lint fails, record the exact errors and fix them in Task 10 unless this task itself introduced them.
 
 - [ ] **Step 5: Commit UI/docs cleanup**
 
@@ -1510,17 +1647,17 @@ git commit -m "fix: clean up popup and development docs"
 
 **Files:**
 - Modify: `package.json`
-- Modify: `package-lock.json` only if npm normalizes it while scripts/dependencies are already present; do not upgrade packages here.
+- Modify: `package-lock.json` only if npm normalizes it; do not upgrade packages here.
 - Create: `scripts/verify-manifest.mjs`
 - Create: `.github/workflows/check.yml`
-- Modify: any files failing Prettier, formatting-only; keep formatting behavior-neutral.
+- Modify: files reported by Prettier, formatting-only.
 - Modify: `.eslintrc.json` only if required for legitimate TSX parsing/import resolution; do not suppress real errors.
 
 **Interfaces:**
 - Produces scripts: `test`, `typecheck`, `lint`, `format:check`, `verify:manifest`, `check`.
 - `npm run check` is the required Phase 1 pre-merge gate.
 
-- [ ] **Step 1: Add a generated-manifest verifier before wiring the combined gate**
+- [ ] **Step 1: Add a generated-manifest verifier**
 
 Create `scripts/verify-manifest.mjs`:
 
@@ -1556,7 +1693,9 @@ const installedPackagesScript = manifest.content_scripts?.find((script) =>
 );
 
 if (!installedPackagesScript) {
-  failures.push("generated manifest is missing the modern Installed Packages content script route");
+  failures.push(
+    "generated manifest is missing the modern Installed Packages content script route",
+  );
 } else {
   for (const match of requiredInstalledPackageMatches) {
     if (!installedPackagesScript.matches?.includes(match)) {
@@ -1570,7 +1709,9 @@ if (!installedPackagesScript) {
 }
 
 if (failures.length > 0) {
-  throw new Error(`Generated manifest verification failed:\n- ${failures.join("\n- ")}`);
+  throw new Error(
+    `Generated manifest verification failed:\n- ${failures.join("\n- ")}`,
+  );
 }
 
 console.log("Generated manifest verification passed.");
@@ -1578,7 +1719,7 @@ console.log("Generated manifest verification passed.");
 
 - [ ] **Step 2: Add the complete package scripts**
 
-Change the `scripts` section of `package.json` to include exactly these quality commands while retaining `dev`, `build`, and `preview`:
+Change the `scripts` section of `package.json` to include these quality commands while retaining `dev`, `build`, and `preview`:
 
 ```json
 {
@@ -1595,35 +1736,37 @@ Change the `scripts` section of `package.json` to include exactly these quality 
 }
 ```
 
-- [ ] **Step 3: Run the newly broadened lint command and fix real TSX errors**
-
-Run:
+- [ ] **Step 3: Run broadened lint and fix real TSX errors**
 
 ```bash
 npm run lint
 ```
 
-Expected at the start of this step: the expanded lint may expose the errors Codex reported in TSX files.
+Expected initially: expanded lint may expose the TSX errors Codex reported.
 
-Fix each error according to its actual rule. Do not add blanket disables and do not remove `.tsx` from lint scope. Common expected fixes include import ordering/semicolons/unused imports in generated shadcn files; Phase 2 will remove unused components, but Phase 1 must still leave the current tree lint-clean.
+Fix each error according to its actual rule. Do not add blanket disables and do not remove `.tsx` from lint scope. Phase 2 may later delete unused shadcn files; Phase 1 must still leave the current tree lint-clean.
 
 - [ ] **Step 4: Run Prettier check and apply isolated formatting only where needed**
-
-Run:
 
 ```bash
 npm run format:check
 ```
 
-If it fails, run:
+If it fails, run Prettier only on each path printed by the failed check:
 
 ```bash
-npx prettier --write <each-file-reported-by-the-check>
+npx prettier --write path/from-prettier-output
 ```
 
-Use only the file paths actually reported by Prettier. Review `git diff --word-diff=plain` to confirm unrelated changes are formatting-only.
+Repeat the command separately for every reported path. Review:
 
-- [ ] **Step 5: Build and run generated-manifest verification directly**
+```bash
+git diff --word-diff=plain
+```
+
+Confirm unrelated changes are formatting-only.
+
+- [ ] **Step 5: Build and verify the generated manifest directly**
 
 ```bash
 npm run build
@@ -1669,11 +1812,15 @@ jobs:
         run: npm run check
 ```
 
-If the existing 2023 toolchain demonstrably fails under Node 22 for a toolchain-only reason, do not silently downgrade CI. Record the incompatibility and resolve it in the smallest compatible way; if Node 20 is temporarily required to establish Phase 1, use Node 20 with a comment stating that Phase 2 must move CI to a maintained Node release during modernization.
+If the 2023 toolchain fails specifically because one current dependency does not support Node 22, use Node 20 for Phase 1 and add this exact comment immediately above `node-version: 20`:
+
+```yaml
+# Temporary Phase 1 runtime; Phase 2 must revalidate and move CI to Node 22.
+```
+
+Do not lower Node because application tests fail for unrelated reasons.
 
 - [ ] **Step 7: Run the complete local gate fresh**
-
-Run exactly:
 
 ```bash
 npm run check
@@ -1692,21 +1839,22 @@ Do not proceed to commit if any subcommand fails.
 
 - [ ] **Step 8: Commit quality gates**
 
-If formatting touched unrelated files, commit that formatting separately first:
+If formatting touched unrelated files, commit those formatting-only changes separately first:
 
 ```bash
-git add <format-only-files>
+git add -u
 git commit -m "style: apply project formatting"
 ```
+
+Before using `git add -u`, inspect `git status --short` and ensure the staged set contains only formatting changes intended for that commit.
 
 Then commit gate/config changes:
 
 ```bash
-git add package.json package-lock.json scripts/verify-manifest.mjs .github/workflows/check.yml .eslintrc.json
+git add package.json package-lock.json scripts/verify-manifest.mjs .github/workflows/check.yml
+git add .eslintrc.json 2>/dev/null || true
 git commit -m "chore: enforce project quality gates"
 ```
-
-Omit `.eslintrc.json` from `git add` if it did not change.
 
 ---
 
@@ -1717,7 +1865,7 @@ Omit `.eslintrc.json` from `git add` if it did not change.
 - Modify: `README.md` only if the verification steps reveal missing manual smoke-test guidance required by the approved spec.
 
 **Interfaces:**
-- Produces: evidence that Phase 1 is ready for PR/review.
+- Produces: evidence that Phase 1 is ready for review/PR.
 - Does not perform Phase 2 modernization.
 
 - [ ] **Step 1: Re-read the approved spec acceptance criteria**
@@ -1735,7 +1883,7 @@ Check each Phase 1 criterion in `docs/superpowers/specs/2026-09-10-staging-revie
 - lint covers JS/TS/TSX;
 - README and popup defects corrected.
 
-- [ ] **Step 2: Run the full gate again with fresh output**
+- [ ] **Step 2: Run the full gate again from the lockfile**
 
 ```bash
 npm ci
@@ -1751,7 +1899,7 @@ git diff --stat fix/staging-review-remediation...HEAD
 git diff fix/staging-review-remediation...HEAD
 ```
 
-Confirm that changes are limited to this Phase 1 plan. In particular, there should be no broad dependency/toolchain upgrades beyond adding the pinned Phase 1 Vitest/jsdom test dependencies.
+Confirm changes are limited to this Phase 1 plan. There must be no broad dependency/toolchain upgrades beyond adding the pinned Phase 1 Vitest/jsdom test dependencies.
 
 - [ ] **Step 4: Perform manual Chrome/Salesforce smoke tests only if authenticated access is available**
 
