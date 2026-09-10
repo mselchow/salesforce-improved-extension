@@ -134,12 +134,11 @@ Run:
 ```bash
 npx vitest run tests/lib/waitForElement.test.js --environment jsdom --setupFiles ./tests/setup.js
 ```
-
 Expected: timeout/AbortSignal cases fail because the current helper has no bounded cleanup/cancellation behavior.
 
 - [ ] **Step 5: Implement bounded `waitForElement`**
 
-Implement the approved contract in `src/lib/waitForElement.js`. Centralize terminal cleanup so observer, timeout, and abort listener are always removed. Query `root` immediately; observe `root.documentElement` for a Document or `root` itself for an Element. If a Document lacks `documentElement`, schedule observation from the next microtask and re-check until either structure exists or timeout/abort terminates.
+Implement the approved contract in `src/lib/waitForElement.js`. Centralize terminal cleanup so observer, timeout, and abort listener are always removed. Query `root` immediately. For a `Document`, observe `root.documentElement ?? root`; for an `Element`, observe the element itself. `Document` is a valid MutationObserver target, so this covers the rare pre-documentElement case without a polling loop.
 
 Core shape:
 ```js
@@ -170,27 +169,20 @@ export default function waitForElement(
     signal?.addEventListener("abort", onAbort, { once: true });
     timeoutId = setTimeout(() => finish(null), timeoutMs);
 
-    const startObserver = () => {
-      const observationRoot = root instanceof Document ? root.documentElement : root;
-      if (!observationRoot) {
-        queueMicrotask(startObserver);
-        return;
-      }
-      observer = new MutationObserver(() => {
-        const match = find();
-        if (match) finish(match);
-      });
-      observer.observe(observationRoot, { childList: true, subtree: true });
-    };
+    const observationRoot =
+      root instanceof Document ? root.documentElement ?? root : root;
 
-    startObserver();
+    observer = new MutationObserver(() => {
+      const match = find();
+      if (match) finish(match);
+    });
+    observer.observe(observationRoot, { childList: true, subtree: true });
   });
 }
 ```
 
 - [ ] **Step 6: Run the wait helper tests and confirm green**
 
-Run:
 ```bash
 npx vitest run tests/lib/waitForElement.test.js --environment jsdom --setupFiles ./tests/setup.js
 ```
@@ -200,26 +192,8 @@ Expected: PASS.
 
 Create `tests/lib/observeMatches.test.js` covering existing matches, newly inserted direct matches, newly inserted descendants, and cleanup preventing subsequent callbacks.
 
-Representative test:
-```js
-it("observes existing and newly added matches until cleanup", async () => {
-  document.body.innerHTML = '<div class="target"></div>';
-  const seen = [];
-  const stop = observeMatches(".target", (element) => seen.push(element));
-
-  const later = document.createElement("div");
-  later.className = "target";
-  document.body.appendChild(later);
-  await Promise.resolve();
-
-  expect(seen).toHaveLength(2);
-  stop();
-});
-```
-
 - [ ] **Step 8: Run observer tests to verify failure before implementation**
 
-Run:
 ```bash
 npx vitest run tests/lib/observeMatches.test.js --environment jsdom --setupFiles ./tests/setup.js
 ```
@@ -227,11 +201,10 @@ Expected: FAIL because `observeMatches.js` does not exist.
 
 - [ ] **Step 9: Implement `observeMatches`**
 
-Create `src/lib/observeMatches.js` with initial query processing, MutationObserver processing for added matching nodes and descendants, and a returned disconnect function. Use a `Set` only within each mutation batch to avoid invoking the callback twice for the same element when both the added node and descendant query paths find it.
+Create `src/lib/observeMatches.js` with initial query processing, MutationObserver processing for added matching nodes and descendants, and a returned disconnect function. Use a `Set` only within each mutation batch to avoid invoking the callback twice for the same element when both paths find it.
 
 - [ ] **Step 10: Run both DOM helper suites**
 
-Run:
 ```bash
 npx vitest run tests/lib/waitForElement.test.js tests/lib/observeMatches.test.js --environment jsdom --setupFiles ./tests/setup.js
 ```
@@ -278,7 +251,7 @@ Use `document.getElementById(id)` first; then use existing `document.head` or `w
 
 - [ ] **Step 4: Give each existing content-script style block a stable ID**
 
-Use these IDs:
+Use:
 ```text
 salesforce-improved-flow-debug-styles
 salesforce-improved-flow-main-styles
@@ -286,8 +259,7 @@ salesforce-improved-login-styles
 salesforce-improved-installed-packages-styles
 salesforce-improved-lightning-styles
 ```
-
-Callers may fire-and-forget the returned promise with `void addGlobalStyle(...)` because style failure is non-fatal.
+Callers may fire-and-forget with `void addGlobalStyle(...)` because style failure is non-fatal.
 
 - [ ] **Step 5: Run style tests**
 
@@ -327,8 +299,7 @@ Use the exact current selectors:
 const POPUP_SELECTOR = "div.slds-docked_container.forceDockingPanel.DOCKED";
 const POPUP_CONTENT_SELECTOR = "div.slds-docked-composer.slds-is-open";
 ```
-
-Test an existing popup, a popup appended after initialization, and repeated calls. Assert `DOCKED` becomes `MINIMIZED` and `slds-is-open` is removed.
+Test existing, later-inserted, and repeated popup handling. Assert `DOCKED` becomes `MINIMIZED` and `slds-is-open` is removed.
 
 - [ ] **Step 2: Verify popup tests fail**
 
@@ -339,20 +310,19 @@ Expected: FAIL before feature module exists.
 
 - [ ] **Step 3: Implement popup feature and thin entrypoint**
 
-`src/features/popupMinimization.js` should export the selectors/functions and call `observeMatches(POPUP_SELECTOR, minimizePopup, { includeExisting: true })`. `src/scripts/general.js` should only import and invoke `initPopupMinimization()`.
+`src/features/popupMinimization.js` exports selectors/functions and calls `observeMatches(POPUP_SELECTOR, minimizePopup, { includeExisting: true })`. `src/scripts/general.js` only imports/invokes `initPopupMinimization()`.
 
 - [ ] **Step 4: Run popup tests green**
 
-Run the same Vitest command; expected PASS.
+Run the same command; expected PASS.
 
 - [ ] **Step 5: Write Flow sidebar tests first**
 
-Use the final selector:
+Use:
 ```js
 const FLOW_SIDEBAR_SELECTOR =
   "builder_platform_interaction-container-common .editor div.slds-grid div.slds-col builder_platform_interaction-left-panel .left-panel";
 ```
-
 Test delayed nested target creation and replacement with a new sidebar node. Assert `slds-size_medium` is removed and `slds-size_large` added on both.
 
 - [ ] **Step 6: Verify Flow tests fail**
@@ -364,7 +334,7 @@ Expected: FAIL before feature module exists.
 
 - [ ] **Step 7: Implement Flow sidebar feature and thin entrypoint**
 
-`adjustFlowSidebar(sidebar)` performs only the two class operations. `initFlowSidebarAdjustment()` uses `observeMatches` on the final selector. Keep the existing Flow Builder style block in `src/scripts/flowMainUI.js`, then invoke the feature initializer.
+`adjustFlowSidebar(sidebar)` performs only the two class operations. `initFlowSidebarAdjustment()` uses `observeMatches` on the final selector. Keep the existing style block in `src/scripts/flowMainUI.js`, then invoke the initializer.
 
 - [ ] **Step 8: Run both feature suites**
 
@@ -394,19 +364,12 @@ git commit -m "fix: restore recurring Salesforce UI adjustments"
 
 **Interfaces:**
 - Consumes: `waitForElement()` from Task 1.
-- Produces: `initInstalledPackages({ timeoutMs } = {}) => Promise<void>` and exported transformation/sort helpers.
+- Produces: `initInstalledPackages({ timeoutMs } = {}) => Promise<void>` plus exported transformation/sort helpers.
 - Produces: `moveLoginsToRight()`, `moveSavedLoginsEditorToRight()`, `sortSavedUsernames()`, `initLoginPage()`.
 
 - [ ] **Step 1: Write Installed Packages tests**
 
-Create a representative `table.list` fixture with `tr.headerRow`, `tbody`, and data rows whose third column sorts out of order. Cover missing table timeout, asynchronously inserted table, default column-2 sort, rerun without nested anchors, and rerun without duplicate click handling.
-
-Use data attributes:
-```text
-data-salesforce-improved-sortable="true"
-data-salesforce-improved-listener="true"
-```
-for explicit idempotency assertions.
+Create a representative `table.list` fixture with `tr.headerRow`, `tbody`, and data rows whose third column sorts out of order. Cover missing table timeout, asynchronous table insertion, default column-2 sort, rerun without nested anchors, and rerun without duplicate click handling. Use explicit data attributes for initialized/listener markers.
 
 - [ ] **Step 2: Verify Installed Packages tests fail**
 
@@ -417,19 +380,19 @@ Expected: FAIL before module exists/current script crashes on null table.
 
 - [ ] **Step 3: Implement testable Installed Packages behavior**
 
-Move table logic into `src/features/installedPackages.js`. Every helper receives the concrete `table` where applicable. `initInstalledPackages()` awaits `waitForElement("table.list", { timeoutMs })`, returns when null, then performs divider replacement, sortable class/marker, header conversion, listener setup, and `sortRows(table, 2)`. Guard absent `tbody` before append operations. Only wrap a header when its first child is not already an `<a>`.
+Move table logic into `src/features/installedPackages.js`. Every helper receives the concrete `table` where applicable. `initInstalledPackages()` awaits `waitForElement("table.list", { timeoutMs })`, returns on null, then performs divider replacement, sortable marking, header conversion, listener setup, and `sortRows(table, 2)`. Guard absent `tbody`. Only wrap a header when its first child is not already an `<a>`.
 
 - [ ] **Step 4: Make the script entrypoint thin**
 
-Keep the Installed Packages style injection in `src/scripts/installedPackages.js`, import `initInstalledPackages`, and call `void initInstalledPackages()`.
+Keep Installed Packages style injection in `src/scripts/installedPackages.js`, import `initInstalledPackages`, and call `void initInstalledPackages()`.
 
 - [ ] **Step 5: Run Installed Packages tests green**
 
-Run the same Vitest command; expected PASS.
+Run the same command; expected PASS.
 
 - [ ] **Step 6: Write login feature tests**
 
-Build fixtures for `#right #content`, `#manager`, `#chooser`, and saved login entries. Attach a click listener directly to `#manager` before movement; after calling `moveSavedLoginsEditorToRight()`, assert the exact same node is under `#right #content` and the listener still fires. Add a no-saved-logins test where `#right #content` is absent and assert no throw.
+Build fixtures for `#right #content`, `#manager`, `#chooser`, and saved login entries. Attach a click listener directly to `#manager` before movement; after movement, assert the exact same node is under `#right #content` and the listener still fires. Add a no-saved-logins test where `#right #content` is absent and assert no throw.
 
 - [ ] **Step 7: Verify login tests fail**
 
@@ -440,19 +403,11 @@ Expected: FAIL because current implementation clones/removes `#manager` and dere
 
 - [ ] **Step 8: Implement login feature module**
 
-Move existing DOM functions without changing layout behavior. Replace clone/remove with:
-```js
-rightContainer.appendChild(savedLoginEditor);
-```
-Guard the no-login message parent:
-```js
-if (!parentContainer) return;
-```
-`initLoginPage()` should await `#main` then perform the two movement operations, and independently await `#idlist` before sorting. Preserve the current 500 ms delay only if tests demonstrate Salesforce ordering depends on it; otherwise remove the arbitrary delay and sort once `#idlist` is available.
+Move existing DOM functions without changing layout behavior. Replace clone/remove with `rightContainer.appendChild(savedLoginEditor)`. Guard a missing no-login message parent with early return. `initLoginPage()` awaits `#main` for movement and independently awaits `#idlist` for sorting. Preserve the current 500 ms delay only if a regression test demonstrates the delay is needed; otherwise remove it.
 
 - [ ] **Step 9: Make login script entrypoint thin and retain style injection**
 
-`src/scripts/loginPage.js` should define/inject styles, import `initLoginPage`, and invoke it.
+`src/scripts/loginPage.js` defines/injects styles, imports `initLoginPage`, and invokes it.
 
 - [ ] **Step 10: Run both feature suites**
 
@@ -479,36 +434,11 @@ git commit -m "fix: harden Salesforce DOM initialization"
 - Modify: `package.json`
 
 **Interfaces:**
-- Produces: `npm run verify:manifest`, which reads `dist/manifest.json` and exits nonzero on invariant failure.
+- Produces: `npm run verify:manifest`, reading `dist/manifest.json` and exiting nonzero on invariant failure.
 
 - [ ] **Step 1: Create a failing built-manifest verifier before changing the manifest**
 
-Create `scripts/verify-manifest.mjs`:
-```js
-import fs from "node:fs";
-
-const manifest = JSON.parse(fs.readFileSync("dist/manifest.json", "utf8"));
-const installed = manifest.content_scripts.find((script) =>
-  script.js?.some((file) => file.includes("installedPackages"))
-);
-
-const fail = (message) => {
-  console.error(message);
-  process.exitCode = 1;
-};
-
-if (manifest.background) fail("background service worker must be removed");
-if (manifest.permissions?.includes("scripting")) fail("scripting permission must be removed");
-if (!installed) fail("Installed Packages content script missing");
-if (!installed?.matches?.includes("*://*.salesforce-setup.com/lightning/setup/ImportedPackage/home*")) {
-  fail("modern Salesforce Setup Installed Packages route missing");
-}
-```
-
-Add:
-```json
-"verify:manifest": "node scripts/verify-manifest.mjs"
-```
+Create `scripts/verify-manifest.mjs` that asserts: no background service worker, no `scripting` permission, Installed Packages content script exists, and it contains `*://*.salesforce-setup.com/lightning/setup/ImportedPackage/home*`. Add `"verify:manifest": "node scripts/verify-manifest.mjs"`.
 
 - [ ] **Step 2: Build and verify red**
 
@@ -519,15 +449,7 @@ Expected: verifier fails because current manifest contains a background worker/`
 
 - [ ] **Step 3: Update `manifest.ts`**
 
-Remove:
-```ts
-permissions: ["scripting"],
-background: { service_worker: "src/scripts/background.js" },
-host_permissions: [...],
-```
-unless a fresh code search finds another retained Chrome API requiring host permissions.
-
-Set Installed Packages matches exactly to:
+Remove `permissions: ["scripting"]`, the background service worker, and `host_permissions` unless fresh code search finds another retained feature requiring them. Set Installed Packages matches exactly to:
 ```ts
 matches: [
   "*://*.salesforce-setup.com/lightning/setup/ImportedPackage/home*",
@@ -576,44 +498,28 @@ git commit -m "fix: remove install-time content script injection"
 
 - [ ] **Step 1: Update popup icon sizing/accessibility**
 
-Replace:
-```tsx
-<img src={icon} className="w-50 h-50" />
-```
-with:
+Replace the image with:
 ```tsx
 <img src={icon} className="w-12 h-12" alt="Salesforce Improved" />
 ```
 
 - [ ] **Step 2: Open the GitHub link in a normal tab**
 
-Replace the normal popup-navigation anchor behavior with an explicit click handler:
+Use an explicit click handler calling:
 ```tsx
-<a
-  href="https://github.com/mselchow/salesforce-improved-extension"
-  className="underline"
-  onClick={(event) => {
-    event.preventDefault();
-    chrome.tabs.create({
-      url: "https://github.com/mselchow/salesforce-improved-extension",
-    });
-  }}
->
-  GitHub
-</a>
+chrome.tabs.create({
+  url: "https://github.com/mselchow/salesforce-improved-extension",
+});
 ```
-Do not add `tabs` permission; `chrome.tabs.create` does not require it for creating a tab with a URL.
+and prevent the anchor's default popup navigation. Do not add `tabs` permission.
 
 - [ ] **Step 3: Correct README unpacked-extension instructions**
 
-State that `npm run build` produces `dist`, and Developer Mode → Load unpacked should select `dist`. Do not tell users to load `src` after `npm run dev`. Add a note that already-open Salesforce tabs must be refreshed after installing/updating the extension because content scripts are static.
+State that `npm run build` produces `dist`, and Load unpacked should select `dist`. Do not tell users to load `src` after `npm run dev`. Add the refresh-after-install/update note.
 
 - [ ] **Step 4: Correct shadcn stylesheet configuration**
 
-Change `components.json`:
-```json
-"css": "src/styles/globals.css"
-```
+Change `components.json` to `"css": "src/styles/globals.css"`.
 
 - [ ] **Step 5: Run typecheck/build smoke checks**
 
@@ -661,23 +567,14 @@ Set scripts to include:
 ```bash
 npm run lint
 ```
-Fix each error without disabling rules globally unless the rule is demonstrably inappropriate for the project. In generated-style UI files scheduled for Phase 2 deletion, prefer the minimal lint correction rather than refactoring them now.
+Fix each error without disabling rules globally unless the rule is demonstrably inappropriate. For UI files scheduled for Phase 2 deletion, make only the minimal lint correction now.
 
 - [ ] **Step 3: Run Prettier check and isolate formatting-only cleanup**
 
 ```bash
 npm run format:check
 ```
-If it fails, run:
-```bash
-npm run format
-```
-Review `git diff` to ensure changes are formatting-only, then commit them separately:
-```bash
-git add .
-git commit -m "style: normalize project formatting"
-```
-Skip this commit if no formatting changes are necessary.
+If it fails, run `npm run format`, review `git diff` for formatting-only changes, and commit those separately as `style: normalize project formatting`.
 
 - [ ] **Step 4: Create CI workflow**
 
@@ -717,7 +614,7 @@ Expected: all tests pass; typecheck, lint, format check, build, and manifest ver
 git add package.json package-lock.json .eslintrc.json .github/workflows/check.yml
 git commit -m "chore: enforce project quality gates"
 ```
-Omit unchanged files from `git add`.
+Omit unchanged files.
 
 ---
 
@@ -725,7 +622,6 @@ Omit unchanged files from `git add`.
 
 **Files:**
 - No production changes expected.
-- Update this plan only if execution discovers a materially different verified requirement.
 
 **Interfaces:**
 - Produces the verified baseline required by the Phase 2 plan.
@@ -735,7 +631,7 @@ Omit unchanged files from `git add`.
 ```bash
 npm run check
 ```
-Record the exact test count and exit status in the execution handoff.
+Record exact test count and exit status.
 
 - [ ] **Step 2: Verify repository diff against `staging`**
 
@@ -746,19 +642,14 @@ git status --short
 ```
 Expected: `git diff --check` exits 0 and working tree is clean.
 
-- [ ] **Step 3: Re-read the approved acceptance criteria**
+- [ ] **Step 3: Re-read approved acceptance criteria**
 
-Confirm every Phase 1 criterion in `docs/superpowers/specs/2026-09-10-staging-review-remediation-design.md` maps to implemented code/tests. Do not substitute a green test suite for this requirement review.
+Confirm every Phase 1 criterion in the design spec maps to implemented code/tests. Do not substitute a green test suite for requirement review.
 
 - [ ] **Step 4: Document manual Salesforce smoke-test status accurately**
 
-If authenticated Salesforce access was available, manually test ordinary Lightning, Setup home, App Builder, Flow Builder, Flow Debug, Installed Packages, and login/saved-login pages and record results.
-
-If authenticated Salesforce access was not available, explicitly record:
-```text
-Authenticated Salesforce browser smoke testing was not performed; automated Phase 1 checks passed, but live Salesforce selectors/routes still require manual verification.
-```
+If authenticated access exists, manually test ordinary Lightning, Setup home, App Builder, Flow Builder, Flow Debug, Installed Packages, and login/saved-login pages. Otherwise record exactly that authenticated smoke testing was not performed and live selectors/routes remain for manual verification.
 
 - [ ] **Step 5: Stop before Phase 2**
 
-Do not begin dependency/toolchain modernization in the same execution pass unless explicitly instructed to continue with the separate Phase 2 plan.
+Do not begin dependency/toolchain modernization unless explicitly instructed to continue with the separate Phase 2 plan.
