@@ -77,7 +77,7 @@ Remove `host_permissions` unless another retained extension feature is discovere
 
 **Behavioral consequence:** already-open Salesforce tabs are not forcibly updated after extension installation/update. A page refresh loads the new static content script version.
 
-This is intentional and must be documented in README troubleshooting/development notes if useful.
+This is intentional. README development/troubleshooting guidance must state that already-open Salesforce tabs need to be refreshed after installing or updating the extension before the new content-script version takes effect.
 
 ### 2. Manifest route model
 
@@ -339,7 +339,12 @@ The combined local/CI gate must run:
 5. production Vite build;
 6. generated-manifest verification.
 
-Add a GitHub Actions workflow that runs the same gate on pull requests and pushes to the implementation branch/main integration branches as appropriate.
+Add a GitHub Actions workflow that runs the same gate on:
+
+- every pull request targeting `staging` or `main`;
+- every push to `staging` or `main`.
+
+Implementation branches are covered by the pull-request event once opened against `staging` or `main`.
 
 Formatting-only cleanup required to make the Prettier gate pass may be included, but it should be isolated in its own commit when it touches unrelated files.
 
